@@ -1,0 +1,14 @@
+/target/
+/runtime/
+/data/
+/downloads/
+/.build-tools/
+/surco.exe
+/surco-error.log
+/qa/
+/dist/
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*

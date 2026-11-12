@@ -1,0 +1,185 @@
+{
+  "id": "MPREb_PQl1mTa2HFY",
+  "album": {
+    "title": "Thriller 25 Super Deluxe Edition",
+    "artists": [
+      {
+        "name": "Michael Jackson",
+        "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+      }
+    ],
+    "year": "2008",
+    "audioPlaylistId": "OLAK5uy_kC31zCBDi0OKrQYSBkiKi69T3AB9ci6sI",
+    "tracks": [
+      {
+        "videoId": "DsJlttdkybk",
+        "title": "Wanna Be Startin' Somethin'",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": "Thriller 25 Super Deluxe Edition",
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        "duration": "6:03",
+        "duration_seconds": 363
+      },
+      {
+        "videoId": "O3tnOVideSo",
+        "title": "Baby Be Mine",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": "Thriller 25 Super Deluxe Edition",
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        "duration": "4:21",
+        "duration_seconds": 261
+      },
+      {
+        "videoId": "8GB9BULxZ8c",
+        "title": "The Girl Is Mine (feat. Paul McCartney)",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": "Thriller 25 Super Deluxe Edition",
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        "duration": "3:43",
+        "duration_seconds": 223
+      },
+      {
+        "videoId": "sOnqjkJTMaA",
+        "title": "Thriller",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": "Thriller 25 Super Deluxe Edition",
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        "duration": "5:58",
+        "duration_seconds": 358
+      },
+      {
+        "videoId": "oRdxUFDoQe0",
+        "title": "Beat It",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": "Thriller 25 Super Deluxe Edition",
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        "duration": "4:19",
+        "duration_seconds": 259
+      }
+    ]
+  },
+  "playlist": {
+    "tracks": [
+      {
+        "videoId": "b11xiNekAsE",
+        "title": "Wanna Be Startin' Somethin'",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": {
+          "name": "Thriller 25 Super Deluxe Edition",
+          "id": "MPREb_PQl1mTa2HFY"
+        },
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "duration": "6:03",
+        "duration_seconds": 363
+      },
+      {
+        "videoId": "kPDewrTNleE",
+        "title": "Baby Be Mine",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": {
+          "name": "Thriller 25 Super Deluxe Edition",
+          "id": "MPREb_PQl1mTa2HFY"
+        },
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "duration": "4:21",
+        "duration_seconds": 261
+      },
+      {
+        "videoId": "FnP44XIUbOM",
+        "title": "The Girl Is Mine (feat. Paul McCartney)",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": {
+          "name": "Thriller 25 Super Deluxe Edition",
+          "id": "MPREb_PQl1mTa2HFY"
+        },
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "duration": "3:43",
+        "duration_seconds": 223
+      },
+      {
+        "videoId": "bR17f-FpTZA",
+        "title": "Thriller",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": {
+          "name": "Thriller 25 Super Deluxe Edition",
+          "id": "MPREb_PQl1mTa2HFY"
+        },
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "duration": "5:58",
+        "duration_seconds": 358
+      },
+      {
+        "videoId": "OiuN52RM3ao",
+        "title": "Beat It",
+        "artists": [
+          {
+            "name": "Michael Jackson",
+            "id": "UCoIOOL7QKuBhQHVKL8y7BEQ"
+          }
+        ],
+        "album": {
+          "name": "Thriller 25 Super Deluxe Edition",
+          "id": "MPREb_PQl1mTa2HFY"
+        },
+        "isAvailable": true,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "duration": "4:19",
+        "duration_seconds": 259
+      }
+    ]
+  }
+}

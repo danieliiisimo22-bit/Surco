@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#13101e" />
+    <title>Surco</title>
+    <link rel="icon" href="/surco.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+    <script src="/material.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Saltar al contenido</a>
+    <header class="topbar glass" data-lens>
+      <button class="brand" data-page="albums" aria-label="Surco, inicio">
+        <img src="/surco.svg" alt="" width="36" height="36" />
+        Surco
+      </button>
+      <nav aria-label="Navegación">
+        <button data-page="albums" class="active" aria-current="page">
+          Álbumes
+        </button>
+        <button data-page="jobs">Descargas <span id="badge"></span></button>
+        <button data-page="settings">Ajustes</button>
+      </nav>
+      <button id="folder" class="subtle">
+        Abrir carpeta <span aria-hidden="true">↗</span>
+      </button>
+    </header>
+    <div id="connection" role="status" hidden></div>
+    <main id="main" tabindex="-1"><p role="status">Abriendo Surco…</p></main>
+    <footer><button id="stop" class="subtle">Cerrar motor</button></footer>
+    <div id="toasts" role="status" aria-live="polite"></div>
+  </body>
+</html>

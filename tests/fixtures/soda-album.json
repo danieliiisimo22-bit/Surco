@@ -1,0 +1,163 @@
+{
+  "title": "Nada Personal",
+  "year": "1985",
+  "artists": [
+    {
+      "name": "Soda Stereo",
+      "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+    }
+  ],
+  "audioPlaylistId": "OLAK5uy_lalLqXMOZ5oBHKLK2CGWvOodZ0MXpMTOQ",
+  "tracks": [
+    {
+      "videoId": "ko24BZXdK8c",
+      "title": "Nada Personal (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "4:53",
+      "duration_seconds": 293
+    },
+    {
+      "videoId": "nfz6u9drTfE",
+      "title": "Si No Fuera Por... (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:28",
+      "duration_seconds": 208
+    },
+    {
+      "videoId": "UEchfRz0D8Q",
+      "title": "Cuando Pase El Temblor (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:50",
+      "duration_seconds": 230
+    },
+    {
+      "videoId": "42pKzqLO_mk",
+      "title": "Danza Rota (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:32",
+      "duration_seconds": 212
+    },
+    {
+      "videoId": "_9uk9g7EcA8",
+      "title": "El Cuerpo Del Delito (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:47",
+      "duration_seconds": 227
+    },
+    {
+      "videoId": "Pk06GUU2-nU",
+      "title": "Juegos De Seducción (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:19",
+      "duration_seconds": 199
+    },
+    {
+      "videoId": "uOlCYVXOyFI",
+      "title": "Estoy Azulado (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "5:18",
+      "duration_seconds": 318
+    },
+    {
+      "videoId": "g5a-2dTBZG4",
+      "title": "Observándonos (Satélites) (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:07",
+      "duration_seconds": 187
+    },
+    {
+      "videoId": "Zes-fOWXtIs",
+      "title": "Imágenes Retro (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "3:50",
+      "duration_seconds": 230
+    },
+    {
+      "videoId": "xw9cgCr0VmE",
+      "title": "Ecos (Remasterizado 2007)",
+      "artists": [
+        {
+          "name": "Soda Stereo",
+          "id": "UCQJuTjhtb6Oyy2kStA1BUKw"
+        }
+      ],
+      "album": "Nada Personal",
+      "isAvailable": true,
+      "videoType": "MUSIC_VIDEO_TYPE_OMV",
+      "duration": "4:58",
+      "duration_seconds": 298
+    }
+  ]
+}

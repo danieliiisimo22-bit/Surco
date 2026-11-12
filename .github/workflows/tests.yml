@@ -1,0 +1,29 @@
+name: Pruebas
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Preparar herramientas
+        run: |
+          rustup update stable
+          if (-not (Get-Command ffmpeg.exe -ErrorAction SilentlyContinue)) {
+              choco install ffmpeg --yes --no-progress
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Instalar dependencias
+        run: ./Preparar.ps1
+      - name: Probar y compilar
+        run: ./Compilar.ps1
