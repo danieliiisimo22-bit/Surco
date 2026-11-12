@@ -168,6 +168,12 @@ class AlbumTests(unittest.TestCase):
 
             self.assertEqual(pcm(original), pcm(new))
 
+            from mutagen.id3 import TRCK
+
+            tags.tags.add(TRCK(encoding=3, text="desconocido/14"))
+            tags.save()
+            self.assertEqual(catalog.inspect_file(new)["number"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

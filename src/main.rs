@@ -3,7 +3,7 @@ mod model;
 mod process;
 mod store;
 mod worker;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     extract::{Path as RoutePath, Query, Request, State},
@@ -25,6 +25,10 @@ use tokio::sync::Mutex;
 
 pub struct App {
     root: PathBuf,
+    data_dir: PathBuf,
+    profile: String,
+    closing: std::sync::atomic::AtomicBool,
+    worker_error: Mutex<Option<String>>,
     token: String,
     config: Mutex<Config>,
     albums: Mutex<HashMap<String, Album>>,
@@ -95,14 +99,18 @@ async fn guard(State(app): State<Arc<App>>, req: Request, next: Next) -> Respons
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"app":"Surco Rust","version":"1.0.0","uptime_ms":app.started.elapsed().as_millis()}),
+        json!({"app":"Surco Rust","version":"1.0.0","uptime_ms":app.started.elapsed().as_millis(),"profile":app.profile}),
     )
 }
 async fn bootstrap(State(app): State<Arc<App>>) -> Json<Value> {
     let ready = process::python(&app.root).is_file()
         && process::runtime_tool(&app.root, "ffmpeg.exe").is_ok()
         && process::runtime_tool(&app.root, "node.exe").is_ok();
-    Json(json!({"token": app.token, "config": *app.config.lock().await, "ready": ready}))
+    let warnings =
+        store::job_warnings(&app.data_dir).unwrap_or_else(|error| vec![error.to_string()]);
+    Json(
+        json!({"token": app.token, "config": *app.config.lock().await, "ready": ready, "warnings": warnings}),
+    )
 }
 #[derive(Deserialize)]
 struct Search {
@@ -135,12 +143,17 @@ async fn artist(State(app): State<Arc<App>>, RoutePath(id): RoutePath<String>) -
     ))
 }
 async fn jobs(State(app): State<Arc<App>>) -> ApiResult<Vec<Job>> {
+    if let Some(error) = app.worker_error.lock().await.clone() {
+        return Err(anyhow::anyhow!(error).into());
+    }
+    let dir = app.data_dir.clone();
     Ok(Json(
-        store::jobs(&app.root)?
-            .into_iter()
-            .filter(|j| !j.id.starts_with("repair-"))
-            .map(store::current)
-            .collect(),
+        tokio::task::spawn_blocking(move || -> Result<Vec<Job>> {
+            let mut jobs = store::jobs(&dir)?;
+            jobs.sort_by_key(|job| !matches!(job.status.as_str(), "running" | "queued" | "paused"));
+            Ok(jobs.into_iter().take(100).map(store::current).collect())
+        })
+        .await??,
     ))
 }
 #[derive(Deserialize)]
@@ -165,16 +178,22 @@ async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> A
     );
     let config = app.config.lock().await.clone();
     let _write = app.writes.lock().await;
-    for existing in store::jobs(&app.root)? {
-        if !existing.id.starts_with("repair-")
-            && existing.album.id == a.id
+    for existing in store::jobs(&app.data_dir)? {
+        if existing.album.id == a.id
             && existing.config.directory == config.directory
             && existing.config.format == config.format
         {
             let old: Vec<_> = existing.items.iter().map(|i| i.track.number).collect();
             if old != indices
                 || existing.items.iter().any(|item| {
-                    let current = &a.tracks[item.track.number - 1];
+                    let Some(current) = item
+                        .track
+                        .number
+                        .checked_sub(1)
+                        .and_then(|index| a.tracks.get(index))
+                    else {
+                        return true;
+                    };
                     item.track.video_id != current.video_id
                         || item.track.source_type != current.source_type
                         || item.track.unavailable != current.unavailable
@@ -185,16 +204,10 @@ async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> A
             if ["running", "queued", "paused"].contains(&existing.status.as_str()) {
                 return Ok(Json(json!({"id":existing.id,"duplicate":true})));
             }
-            if existing.items.iter().all(|i| {
-                i.status == "saved"
-                    && !i.hash.is_empty()
-                    && store::hash(Path::new(&i.path)).is_ok_and(|hash| hash == i.hash)
-            }) {
-                return Ok(Json(json!({"id":existing.id,"duplicate":true})));
-            }
+            // The worker checks saved files off the async runtime before downloading.
             let mut j = existing;
             j.status = "queued".into();
-            store::save(&store::job_path(&app.root, &j.id), &j)?;
+            store::save(&store::job_path(&app.data_dir, &j.id), &j)?;
             return Ok(Json(json!({"id":j.id,"duplicate":true})));
         }
     }
@@ -221,7 +234,7 @@ async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> A
         status: "queued".into(),
         items,
     };
-    store::save(&store::job_path(&app.root, &id), &job)?;
+    store::save(&store::job_path(&app.data_dir, &id), &job)?;
     Ok(Json(json!({"id":id,"duplicate":false})))
 }
 async fn control(
@@ -229,24 +242,19 @@ async fn control(
     RoutePath((id, action)): RoutePath<(String, String)>,
 ) -> ApiResult<Value> {
     let _write = app.writes.lock().await;
-    ensure_api!(
-        !id.starts_with("repair-"),
-        "Este trabajo pertenece a una versión anterior."
-    );
-    let mut job = store::job(&app.root, &id)?;
+    let mut job = store::job(&app.data_dir, &id)?;
     match action.as_str() {
         "pause" | "cancel" => {
             ensure_api!(
                 ["running", "queued", "paused"].contains(&job.status.as_str()),
                 "Este trabajo ya terminó."
             );
-            job.status = if action == "pause" {
+            job.stop(if action == "pause" {
                 "paused"
             } else {
                 "cancelled"
-            }
-            .into();
-            store::save(&store::job_path(&app.root, &id), &job)?;
+            });
+            store::save(&store::job_path(&app.data_dir, &id), &job)?;
             if let Some((active, tx)) = &*app.active.lock().await
                 && active == &id
             {
@@ -260,7 +268,7 @@ async fn control(
             );
             job.status = "queued".into();
             job.config.browser = app.config.lock().await.browser.clone();
-            store::save(&store::job_path(&app.root, &id), &job)?;
+            store::save(&store::job_path(&app.data_dir, &id), &job)?;
         }
         _ => return Err(anyhow::anyhow!("Acción no reconocida.").into()),
     }
@@ -279,7 +287,7 @@ async fn settings(State(app): State<Arc<App>>, Json(config): Json<Config>) -> Ap
         ["", "firefox", "chrome", "edge"].contains(&config.browser.as_str()),
         "Navegador no válido."
     );
-    store::save(&store::data(&app.root).join("settings.json"), &config)?;
+    store::save(&app.data_dir.join("settings.json"), &config)?;
     *app.config.lock().await = config;
     Ok(Json(json!({"ok":true})))
 }
@@ -289,7 +297,7 @@ struct Folder {
 }
 async fn folder(State(app): State<Arc<App>>, Json(input): Json<Folder>) -> ApiResult<Value> {
     let path = if let Some(id) = input.job_id {
-        let job = store::job(&app.root, &id)?;
+        let job = store::job(&app.data_dir, &id)?;
         job.items
             .iter()
             .find(|i| !i.path.is_empty() && Path::new(&i.path).is_file())
@@ -313,7 +321,7 @@ async fn report(
     State(app): State<Arc<App>>,
     RoutePath(id): RoutePath<String>,
 ) -> std::result::Result<Response, ApiError> {
-    let job = store::current(store::job(&app.root, &id)?);
+    let job = store::current(store::job(&app.data_dir, &id)?);
     let e = |v: &str| {
         v.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -354,10 +362,14 @@ async fn report(
 }
 async fn shutdown(State(app): State<Arc<App>>) -> Json<Value> {
     let _write = app.writes.lock().await;
+    app.closing
+        .store(true, std::sync::atomic::Ordering::Relaxed);
     if let Some((id, tx)) = &*app.active.lock().await {
-        if let Ok(mut j) = store::job(&app.root, id) {
-            j.status = "paused".into();
-            let _ = store::save(&store::job_path(&app.root, id), &j);
+        if let Ok(mut j) = store::job(&app.data_dir, id)
+            && j.status == "running"
+        {
+            j.stop("paused");
+            let _ = store::save(&store::job_path(&app.data_dir, id), &j);
         }
         let _ = tx.send(true);
     }
@@ -469,6 +481,28 @@ fn open_window() {
         .args(["url.dll,FileProtocolHandler", "http://127.0.0.1:8737"])
         .spawn();
 }
+const OTHER_PROFILE: &str =
+    "Surco ya está abierto en otra sesión de Windows. Ciérralo desde allí para usarlo aquí.";
+
+fn check_running_instance(response: &[u8], profile: &str) -> Result<()> {
+    let response = std::str::from_utf8(response)?;
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .context("Respuesta inválida en el puerto de Surco.")?;
+    anyhow::ensure!(
+        headers.starts_with("HTTP/1.1 200 "),
+        "Otro programa ocupa el puerto de Surco (8737)."
+    );
+    let health: Value =
+        serde_json::from_str(body).context("Otro programa ocupa el puerto de Surco (8737).")?;
+    anyhow::ensure!(
+        health["app"] == "Surco Rust",
+        "Otro programa ocupa el puerto de Surco (8737)."
+    );
+    anyhow::ensure!(health["profile"] == profile, "{OTHER_PROFILE}");
+    Ok(())
+}
+
 async fn run() -> Result<()> {
     let start = Instant::now();
     let root = std::env::current_exe()?.parent().unwrap().to_path_buf();
@@ -477,6 +511,9 @@ async fn run() -> Result<()> {
     } else {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
     };
+    let data_dir = store::data(&root);
+    std::fs::create_dir_all(&data_dir)?;
+    let profile = store::profile_id(&data_dir)?;
     let listener = match tokio::net::TcpListener::bind("127.0.0.1:8737").await {
         Ok(l) => l,
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
@@ -489,10 +526,7 @@ async fn run() -> Result<()> {
                 stream.read_to_end(&mut response),
             )
             .await??;
-            anyhow::ensure!(
-                String::from_utf8_lossy(&response).contains("Surco Rust"),
-                "Otro programa ocupa el puerto de Surco (8737)."
-            );
+            check_running_instance(&response, &profile)?;
             if !std::env::args().any(|a| a == "--headless") {
                 open_window();
             }
@@ -511,21 +545,25 @@ async fn run() -> Result<()> {
         format: "mp3".into(),
         browser: String::new(),
     };
-    let settings_path = store::data(&root).join("settings.json");
+    let settings_path = data_dir.join("settings.json");
     let config = if settings_path.is_file() {
         store::read(&settings_path)?
     } else {
         store::save(&settings_path, &default)?;
         default
     };
-    for mut j in store::jobs(&root)? {
-        if j.status == "running" && !j.id.starts_with("repair-") {
-            j.status = "paused".into();
-            store::save(&store::job_path(&root, &j.id), &j)?;
+    for mut j in store::jobs(&data_dir)? {
+        if j.status == "running" {
+            j.stop("paused");
+            store::save(&store::job_path(&data_dir, &j.id), &j)?;
         }
     }
     let app = Arc::new(App {
         root,
+        data_dir,
+        profile,
+        closing: false.into(),
+        worker_error: Mutex::new(None),
         config: Mutex::new(config),
         token: uuid::Uuid::new_v4().to_string(),
         albums: Mutex::new(HashMap::new()),
@@ -535,7 +573,7 @@ async fn run() -> Result<()> {
     });
     tokio::spawn(worker::dispatch(app.clone()));
     store::save(
-        &store::data(&app.root).join("startup.json"),
+        &app.data_dir.join("startup.json"),
         &json!({"ready_ms":start.elapsed().as_millis(),"version":"1.0.0"}),
     )?;
     if !std::env::args().any(|a| a == "--headless") {
@@ -548,7 +586,18 @@ async fn run() -> Result<()> {
 async fn main() {
     if let Err(e) = run().await {
         eprintln!("{e:#}");
-        let _ = std::fs::write("surco-error.log", format!("{e:#}"));
+        if let Ok(exe) = std::env::current_exe()
+            && let Some(root) = exe.parent()
+        {
+            let dir = store::data(root);
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(dir.join("surco-error.log"), format!("{e:#}"));
+        }
+        #[cfg(windows)]
+        if !std::env::args().any(|arg| arg == "--headless") {
+            process::show_error(&format!("{e:#}"));
+        }
+        std::process::exit(1);
     }
 }
 
@@ -561,6 +610,10 @@ mod tests {
     fn test_app(root: &Path) -> Arc<App> {
         Arc::new(App {
             root: root.into(),
+            data_dir: root.into(),
+            profile: store::profile_id(root).unwrap(),
+            closing: false.into(),
+            worker_error: Mutex::new(None),
             token: "test-token".into(),
             config: Mutex::new(Config {
                 directory: root.join("music").to_string_lossy().into(),
@@ -656,6 +709,37 @@ mod tests {
         assert_eq!(r.status(), StatusCode::BAD_REQUEST);
     }
     #[tokio::test]
+    async fn health_distinguishes_data_profiles_without_returning_paths() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let mut profiles = Vec::new();
+        for dir in [&first, &second] {
+            let response = router(test_app(dir.path()))
+                .oneshot(req("GET", "/api/health", "", json!(null)))
+                .await
+                .unwrap();
+            let value: Value =
+                serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            let profile = value["profile"].as_str().unwrap();
+            assert_eq!(profile.len(), 64);
+            assert_eq!(profile, store::profile_id(dir.path()).unwrap());
+            profiles.push(profile.to_owned());
+        }
+        assert_ne!(profiles[0], profiles[1]);
+        let response = format!(
+            "HTTP/1.1 200 OK\r\n\r\n{}",
+            json!({"app":"Surco Rust","profile":profiles[0]})
+        );
+        assert!(check_running_instance(response.as_bytes(), &profiles[0]).is_ok());
+        assert_eq!(
+            check_running_instance(response.as_bytes(), &profiles[1])
+                .unwrap_err()
+                .to_string(),
+            OTHER_PROFILE
+        );
+    }
+    #[tokio::test]
     async fn controls_keep_saved_tracks_on_resume() {
         let d = tempfile::tempdir().unwrap();
         let a = test_app(d.path());
@@ -669,16 +753,25 @@ mod tests {
             State(a.clone()),
             Json(Download {
                 album_id: album.id.clone(),
-                tracks: vec![1],
+                tracks: vec![1, 2],
             }),
         )
         .await
         .unwrap_or_else(|_| panic!("enqueue"));
-        let j = store::jobs(d.path()).unwrap().remove(0);
+        let mut j = store::jobs(d.path()).unwrap().remove(0);
+        j.status = "running".into();
+        j.items[0].status = "downloading".into();
+        j.items[0].detail = "Descargando".into();
+        j.items[1].status = "saved".into();
+        store::save(&store::job_path(d.path(), &j.id), &j).unwrap();
         let _ = control(State(a.clone()), RoutePath((j.id.clone(), "pause".into())))
             .await
             .unwrap_or_else(|_| panic!("pause"));
-        assert_eq!(store::job(d.path(), &j.id).unwrap().status, "paused");
+        let paused = store::job(d.path(), &j.id).unwrap();
+        assert_eq!(paused.status, "paused");
+        assert_eq!(paused.items[0].status, "pending");
+        assert!(paused.items[0].detail.is_empty());
+        assert_eq!(paused.items[1].status, "saved");
         let _ = control(State(a), RoutePath((j.id.clone(), "resume".into())))
             .await
             .unwrap_or_else(|_| panic!("resume"));

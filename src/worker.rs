@@ -10,18 +10,18 @@ use std::{
 
 async fn update(app: &App, id: &str, index: usize, status: &str, detail: &str) -> Result<()> {
     let _lock = app.writes.lock().await;
-    let mut job = store::job(&app.root, id)?;
+    let mut job = store::job(&app.data_dir, id)?;
     if job.status != "running" {
         bail!("El trabajo está detenido.");
     }
     job.items[index].status = status.into();
     job.items[index].detail = detail.into();
-    store::save(&store::job_path(&app.root, id), &job)
+    store::save(&store::job_path(&app.data_dir, id), &job)
 }
 
 fn candidates(app: &App, job: &Job, t: &Track) -> Result<Vec<PathBuf>> {
     let mut result = Vec::new();
-    for j in store::jobs(&app.root)? {
+    for j in store::jobs(&app.data_dir)? {
         for i in j.items {
             if i.status == "saved"
                 && i.track.video_id == t.video_id
@@ -32,31 +32,19 @@ fn candidates(app: &App, job: &Job, t: &Track) -> Result<Vec<PathBuf>> {
             }
         }
     }
-    let inventory = store::data(&app.root).join("existing-library.json");
-    if inventory.is_file() {
-        let rows: Vec<Value> = store::read(&inventory)?;
-        for row in rows {
-            if row["video_id"] == t.video_id && row["format"] == job.config.format {
-                let p = PathBuf::from(row["path"].as_str().unwrap_or(""));
-                if p.is_file() {
-                    result.push(p);
-                }
-            }
-        }
-    }
     result.sort();
     result.dedup();
     Ok(result)
 }
 
-async fn saved_valid(app: &App, item: &Outcome) -> bool {
+async fn saved_valid(item: &Outcome) -> bool {
     if item.status != "saved" || item.hash.is_empty() {
         return false;
     }
     let p = PathBuf::from(&item.path);
     let expected = item.hash.clone();
     let result = tokio::task::spawn_blocking(move || store::hash(&p)).await;
-    matches!(result,Ok(Ok(hash)) if hash==expected) && app.root.is_dir()
+    matches!(result,Ok(Ok(hash)) if hash==expected)
 }
 
 async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outcome> {
@@ -77,7 +65,7 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
     } else {
         source["duration"].as_f64().unwrap_or(0.)
     };
-    let target = store::destination(&job.config, &job.album, t);
+    let target = store::destination(&job.config, &job.album, t)?;
     let parent = target.parent().context("Carpeta inválida")?;
     fs::create_dir_all(parent)?;
     // Persist partial work so pauses and tag/write failures don't download again.
@@ -87,6 +75,8 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
         .join(&job.id)
         .join(format!("{index}-{}", t.video_id));
     fs::create_dir_all(&stage)?;
+    #[cfg(windows)]
+    process::hide_directory(&parent.join(".surco-work"));
     let prepared = stage.join(format!("prepared.{}", job.config.format));
     let checkpoint = stage.join("progress.json");
     let mut progress: Value = if checkpoint.is_file() {
@@ -128,7 +118,8 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
             && duration_matches(expected_duration, proof["duration"].as_f64().unwrap_or(0.));
         // A completed write interrupted before the final job save can be
         // recovered only from the durable receipt made before publication.
-        let receipt = store::data(&app.root)
+        let receipt = app
+            .data_dir
             .join("receipts")
             .join(format!("{}-{index}.json", job.id));
         if same_audio && receipt.is_file() {
@@ -316,7 +307,7 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
     }
     // Save evidence before publication. A restart can recover the exact result.
     store::save(
-        &store::data(&app.root)
+        &app.data_dir
             .join("receipts")
             .join(format!("{}-{index}.json", job.id)),
         &out,
@@ -342,7 +333,23 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
 }
 
 async fn run_job(app: Arc<App>, id: String) -> Result<()> {
-    let job = store::job(&app.root, &id)?;
+    let job = store::job(&app.data_dir, &id)?;
+    let mut all_saved = !job.items.is_empty();
+    for item in &job.items {
+        if !saved_valid(item).await {
+            all_saved = false;
+            break;
+        }
+    }
+    if all_saved {
+        let _lock = app.writes.lock().await;
+        let mut current = store::job(&app.data_dir, &id)?;
+        if current.status == "running" {
+            current.status = "completed".into();
+            store::save(&store::job_path(&app.data_dir, &id), &current)?;
+        }
+        return Ok(());
+    }
     let fresh: Album = serde_json::from_value(
         process::bridge(&app.root, json!({"op":"album","id":job.album.id})).await?,
     )?;
@@ -354,14 +361,19 @@ async fn run_job(app: Arc<App>, id: String) -> Result<()> {
     for item in &job.items {
         let now = fresh
             .tracks
-            .get(item.track.number - 1)
+            .get(
+                item.track
+                    .number
+                    .checked_sub(1)
+                    .context("Número de pista inválido")?,
+            )
             .context("Cambió el orden del álbum")?;
         anyhow::ensure!(
             now.video_id == item.track.video_id && key(&now.title) == key(&item.track.title),
             "Cambió una pista de la publicación. No se elegirá otra versión automáticamente."
         );
     }
-    let covers = store::data(&app.root).join("covers");
+    let covers = app.data_dir.join("covers");
     fs::create_dir_all(&covers)?;
     let cover = covers.join(format!("{}.jpg", job.album.id));
     if !cover.is_file() && !job.album.image.is_empty() {
@@ -372,13 +384,13 @@ async fn run_job(app: Arc<App>, id: String) -> Result<()> {
         .await;
     }
     for index in 0..job.items.len() {
-        let latest = store::job(&app.root, &id)?;
-        if saved_valid(&app, &latest.items[index]).await {
+        let latest = store::job(&app.data_dir, &id)?;
+        if saved_valid(&latest.items[index]).await {
             continue;
         }
         let result = track(&app, &latest, index, &cover).await;
         let _lock = app.writes.lock().await;
-        let mut latest = store::job(&app.root, &id)?;
+        let mut latest = store::job(&app.data_dir, &id)?;
         if latest.status != "running" {
             return Ok(());
         }
@@ -389,10 +401,10 @@ async fn run_job(app: Arc<App>, id: String) -> Result<()> {
                 latest.items[index].detail = format!("{e:#}");
             }
         }
-        store::save(&store::job_path(&app.root, &id), &latest)?;
+        store::save(&store::job_path(&app.data_dir, &id), &latest)?;
         if latest.items[index].status == "saved" {
             let t = &latest.items[index].track;
-            let target = store::destination(&latest.config, &latest.album, t);
+            let target = store::destination(&latest.config, &latest.album, t)?;
             if let Some(parent) = target.parent() {
                 let own = parent
                     .join(".surco-work")
@@ -410,14 +422,17 @@ async fn run_job(app: Arc<App>, id: String) -> Result<()> {
         }
     }
     let _lock = app.writes.lock().await;
-    let mut latest = store::job(&app.root, &id)?;
+    let mut latest = store::job(&app.data_dir, &id)?;
+    if latest.status != "running" {
+        return Ok(());
+    }
     latest.status = if latest.items.iter().all(|x| x.status == "saved") {
         "completed"
     } else {
         "attention"
     }
     .into();
-    store::save(&store::job_path(&app.root, &id), &latest)?;
+    store::save(&store::job_path(&app.data_dir, &id), &latest)?;
     Ok(())
 }
 
@@ -426,27 +441,44 @@ pub async fn dispatch(app: Arc<App>) {
         tokio::time::sleep(Duration::from_millis(300)).await;
         let selected = {
             let _lock = app.writes.lock().await;
-            let jobs = store::jobs(&app.root).unwrap_or_default();
-            let mut next = jobs
-                .into_iter()
-                .rev()
-                .find(|j| j.status == "queued" && !j.id.starts_with("repair-"));
-            if let Some(j) = &mut next {
-                j.status = "running".into();
-                if store::save(&store::job_path(&app.root, &j.id), j).is_err() {
-                    next = None;
+            if app.closing.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            let claim = || -> Result<Option<Job>> {
+                let mut next = store::jobs(&app.data_dir)?
+                    .into_iter()
+                    .rev()
+                    .find(|j| j.status == "queued");
+                if let Some(j) = &mut next {
+                    j.status = "running".into();
+                    store::save(&store::job_path(&app.data_dir, &j.id), j)?;
+                }
+                Ok(next)
+            };
+            match claim() {
+                Ok(next) => {
+                    *app.worker_error.lock().await = None;
+                    if let Some(job) = next {
+                        let (tx, rx) = tokio::sync::watch::channel(false);
+                        *app.active.lock().await = Some((job.id.clone(), tx));
+                        Some((job, rx))
+                    } else {
+                        None
+                    }
+                }
+                Err(error) => {
+                    *app.worker_error.lock().await =
+                        Some(format!("No se pudo leer o actualizar la cola: {error:#}"));
+                    None
                 }
             }
-            next
         };
-        if let Some(job) = selected {
-            let (tx, mut rx) = tokio::sync::watch::channel(false);
-            *app.active.lock().await = Some((job.id.clone(), tx));
+        if let Some((job, mut rx)) = selected {
             let result =
                 tokio::select! {r=run_job(app.clone(),job.id.clone())=>r,_=rx.changed()=>Ok(())};
             if let Err(e) = result {
                 let _lock = app.writes.lock().await;
-                if let Ok(mut j) = store::job(&app.root, &job.id)
+                if let Ok(mut j) = store::job(&app.data_dir, &job.id)
                     && j.status == "running"
                 {
                     j.status = "attention".into();
@@ -456,7 +488,7 @@ pub async fn dispatch(app: Arc<App>) {
                             i.detail = format!("{e:#}");
                         }
                     }
-                    let _ = store::save(&store::job_path(&app.root, &j.id), &j);
+                    let _ = store::save(&store::job_path(&app.data_dir, &j.id), &j);
                 }
             }
             *app.active.lock().await = None;

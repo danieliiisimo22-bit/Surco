@@ -234,7 +234,10 @@ def inspect_file(path):
         title = str(audio.tags.get("TIT2", ""))
         album = str(audio.tags.get("TALB", ""))
         artist = str(audio.tags.get("TPE1", ""))
-        number = int(str(audio.tags.get("TRCK", "0")).split("/")[0] or 0)
+        try:
+            number = int(str(audio.tags.get("TRCK", "0")).split("/")[0])
+        except ValueError:
+            number = 0
         album_artist = str(audio.tags.get("TPE2", ""))
         year = str(audio.tags.get("TDRC", ""))[:4]
     return dict(

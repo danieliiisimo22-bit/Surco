@@ -94,7 +94,36 @@ pub async fn bridge(root: &Path, value: Value) -> Result<Value> {
     Ok(reply["data"].clone())
 }
 
-#[cfg(test)]
+#[cfg(windows)]
+pub fn hide_directory(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileAttributesW(path: *const u16) -> u32;
+        fn SetFileAttributesW(path: *const u16, attributes: u32) -> i32;
+    }
+    let path: Vec<_> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // The UTF-16 buffer is NUL-terminated and lives through both calls.
+    unsafe {
+        let attributes = GetFileAttributesW(path.as_ptr());
+        if attributes != u32::MAX && attributes & 2 == 0 {
+            SetFileAttributesW(path.as_ptr(), attributes | 2);
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn show_error(message: &str) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(window: isize, text: *const u16, title: *const u16, kind: u32) -> i32;
+    }
+    let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
+    // The dialog receives live, NUL-terminated strings and no parent window.
+    unsafe { MessageBoxW(0, wide(message).as_ptr(), wide("Surco").as_ptr(), 0x10) };
+}
+
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

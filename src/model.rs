@@ -36,6 +36,7 @@ pub struct Album {
     pub playlist_id: String,
     pub title: String,
     pub artist: String,
+    #[serde(default)]
     pub year: String,
     #[serde(default)]
     pub image: String,
@@ -54,6 +55,7 @@ pub struct Config {
 pub struct Outcome {
     pub track: Track,
     pub status: String,
+    #[serde(default)]
     pub detail: String,
     #[serde(default)]
     pub path: String,
@@ -71,6 +73,21 @@ pub struct Job {
     pub config: Config,
     pub status: String,
     pub items: Vec<Outcome>,
+}
+
+impl Job {
+    pub fn stop(&mut self, status: &str) {
+        self.status = status.into();
+        for item in &mut self.items {
+            if matches!(
+                item.status.as_str(),
+                "checking" | "downloading" | "converting" | "tagging"
+            ) {
+                item.status = "pending".into();
+                item.detail.clear();
+            }
+        }
+    }
 }
 
 pub fn key(value: &str) -> String {

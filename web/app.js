@@ -716,6 +716,11 @@ async function init() {
     const data = await api("/bootstrap");
     state.token = data.token;
     state.config = data.config;
+    if (data.warnings?.length) {
+      const notice = $("#profile-warning");
+      notice.textContent = data.warnings.join(" ");
+      notice.hidden = false;
+    }
     if (!data.ready)
       throw Error(
         "Faltan componentes de audio. Sigue los pasos de instalación del README.",

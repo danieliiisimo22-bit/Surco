@@ -25,9 +25,14 @@ También puedes buscar por título o pegar el enlace de un álbum. Si el catálo
 
 Surco toma el identificador de audio oficial de la lista de la edición elegida. Comprueba posición, título y artista. Contrasta la duración disponible con la ficha del álbum y verifica el archivo antes de guardarlo. Si la fuente resulta ambigua o no está disponible, la pista queda pendiente con un motivo. La verificación usa metadatos del catálogo y del archivo.
 
-Los formatos son MP3 a 320 kbps y M4A/AAC de origen. Puedes cambiar el formato y el destino en **Ajustes**. La carpeta predeterminada es `%USERPROFILE%\Music\Surco`. Usa Surco con contenido que tengas permiso de descargar.
+**MP3 a 320 kbps** recodifica el audio de origen, normalmente AAC u Opus. La conversión no mejora su calidad. **M4A** conserva el audio AAC de origen sin recodificar cuando está disponible. Puedes cambiar el formato y el destino en **Ajustes**. La carpeta de música predeterminada es `%USERPROFILE%\Music\Surco`.
 
-Surco reutiliza archivos locales cuya fuente y duración coinciden.
+Surco reutiliza archivos del historial cuyos datos de fuente y duración coinciden.
+
+Si el catálogo funciona y las descargas empiezan a fallar, ejecuta `powershell -ExecutionPolicy Bypass -File .\Actualizar.ps1` para actualizar yt-dlp y reinicia Surco.
+
+- Usar las cookies de tu navegador con yt-dlp puede provocar restricciones en la cuenta de YouTube. [Documentación de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)
+- Descargar de YouTube Music puede infringir los términos del servicio. Comprueba que tienes permiso para descargar el contenido. El uso de Surco es responsabilidad de quien lo ejecuta. [Términos de YouTube](https://www.youtube.com/t/terms)
 
 ## Código y pruebas
 
@@ -36,6 +41,8 @@ Surco reutiliza archivos locales cuya fuente y duración coinciden.
 - `web/` contiene la interfaz integrada en el ejecutable.
 - `tests/` contiene pruebas y muestras reducidas de catálogo. `Compilar.ps1` ejecuta las pruebas de Rust, Python y JavaScript antes de compilar.
 
-El perfil local queda en `data/`. Para ejecutar una prueba con configuración y cola propias, define `SURCO_DATA` con la ruta de una carpeta temporal.
+Cada usuario de Windows tiene su propia cola, historial y ajustes en `%LOCALAPPDATA%\Surco`. Si esa variable falta, Surco usa `%APPDATA%\Surco` o, en último término, `data/` junto al programa. Copia la carpeta del perfil con Surco cerrado para respaldarla. El cambio de ubicación empieza con un perfil nuevo. Los archivos de música se guardan por separado.
+
+`SURCO_DATA` tiene prioridad y permite usar un perfil de pruebas. El puerto local 8737 admite un motor a la vez. Si lo ocupa otro perfil de Windows, ciérralo desde la sesión que lo inició. Los errores de arranque se guardan como `surco-error.log` dentro del perfil.
 
 La refracción de la interfaz usa [Glasswork v1.1.0](https://github.com/kubai087/glasswork/tree/v1.1.0). Su [licencia MIT](web/vendor/glasswork/LICENSE) se conserva junto al módulo.
