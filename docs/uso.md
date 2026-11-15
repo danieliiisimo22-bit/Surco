@@ -1,27 +1,50 @@
-# Guía de Surco
+# Guía de uso de Surco
 
-## Desde cero
+## Abrir Surco por primera vez
 
-1. En **Releases** de Surco en GitHub, abre **Assets** y descarga `Surco-1.0.0-windows-x64.zip`. Si ya extrajiste ese ZIP, abre `surco.exe` en esta carpeta.
-2. En Windows 10 u 11 de 64 bits, haz clic derecho sobre el ZIP y elige **Extraer todo**. Abre `surco.exe` en la carpeta que creó Windows.
-3. En la ventana de Surco, busca un artista o el título de un álbum. También puedes pegar el enlace de un álbum de YouTube Music.
-4. Abre el artista o una publicación y marca hasta dos canciones en total. Para cambiar la selección, desmarca alguna de las canciones elegidas.
-5. Pulsa **Descargar selección**. La sección **Descargas** muestra el estado de cada canción. Pulsa **Abrir carpeta** para acceder a tus archivos.
+1. En **Releases** de Surco en GitHub, abre **Assets** y descarga `Surco-1.0.0-windows-x64.zip`. El paquete es portable y funciona en Windows 10 y 11 de 64 bits.
+2. Haz clic derecho en el ZIP y elige **Extraer todo**. Si ya lo extrajiste, continúa en la carpeta que creó Windows.
+3. Abre `surco.exe`. Surco muestra su interfaz en Edge o en el navegador predeterminado. Mantén `surco.exe`, `bridge` y `runtime` en la misma carpeta.
 
-La primera vez que abras Surco en tu perfil de Windows, el buscador y el historial estarán vacíos. Las versiones extraídas en carpetas distintas comparten el historial y los ajustes del mismo perfil de Windows.
+La primera vez que abres Surco con tu usuario de Windows, el buscador y el historial están vacíos. Las carpetas extraídas en el mismo perfil de Windows comparten el historial y los ajustes.
 
-## Formato y archivos
+## Encontrar y guardar canciones
 
-- **MP3 a 320 kbps** convierte el audio al formato MP3. **M4A** conserva el AAC de origen cuando el catálogo lo ofrece.
-- **Ajustes** permite cambiar el formato y la carpeta de destino. La ubicación inicial es `%USERPROFILE%\Music\Surco`.
-- Surco usa el audio oficial que corresponde a la edición elegida. Si no puede confirmar la fuente o la disponibilidad de una pista, muestra el motivo junto a ella.
-- Al cerrar la ventana, el motor local sigue procesando la cola. Usa **Cerrar motor** para salir y pausar el trabajo activo. Puedes reanudarlo desde **Descargas** al abrir Surco de nuevo.
+1. Escribe el nombre de un artista o álbum y pulsa **Buscar**. También puedes pegar un enlace de álbum de YouTube Music.
+2. Si abres un artista, elige **Canciones**, **Álbumes** o **Sencillos y EP**. En la ficha de un álbum aparecen las pistas de esa edición. Usa **Otras ediciones** cuando el catálogo ofrezca variantes.
+3. Marca una o dos canciones. Puedes elegirlas en álbumes distintos. Para cambiar una pista cuando el botón indica **2/2**, desmárcala primero en la lista donde la elegiste.
+4. Pulsa **Descargar selección**. En **Descargas**, abre **Resultados por canción** para ver el estado de cada pista. Con **Abrir carpeta** puedes encontrar los archivos que se guardaron.
 
-## Si algo falla
+Surco usa el audio oficial que corresponde a la edición elegida. Cuando el catálogo no permite confirmar ese audio o la pista está bloqueada, la interfaz muestra el motivo.
 
-- Si faltan componentes, vuelve a extraer el ZIP completo y abre el ejecutable en esa carpeta. `surco.exe`, `bridge` y `runtime` deben estar juntos.
-- Si la búsqueda o la ficha de un artista falla, comprueba tu conexión y vuelve a intentar la consulta.
-- Si una pista queda pendiente, abre **Resultados por canción** en **Descargas** para leer el motivo. Si YouTube pide iniciar sesión, **Ajustes** permite elegir un navegador compatible para usar sus cookies. Usa esta opción solo cuando decidas compartir esa sesión con el descargador. [Documentación de yt-dlp sobre cookies](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
-- Para actualizar, usa la carpeta extraída de una nueva versión. Surco guarda su configuración e historial en `%LOCALAPPDATA%\Surco`, por separado de los archivos descargados.
+## Elegir el formato y la carpeta
+
+En **Ajustes**, elige el formato y pulsa **Guardar ajustes**. **MP3 a 320 kbps** convierte el audio a un formato compatible con muchos reproductores. **M4A** conserva el audio AAC de la fuente cuando está disponible. Configura el formato antes de añadir la selección a **Descargas**.
+
+La carpeta inicial es `%USERPROFILE%\Music\Surco`. Puedes abrirla desde **Abrir carpeta** o cambiarla en **Ajustes**. Dentro de ella verás carpetas por artista y álbum, y cada archivo lleva el número de pista y el título.
+
+## Controlar las descargas
+
+- **Pausar** detiene temporalmente el trabajo. **Continuar** lo devuelve a la cola.
+- **Reintentar pendientes** vuelve a intentar las pistas que quedaron sin guardar.
+- **Cerrar motor**, al pie de la ventana, cierra Surco y pausa el trabajo activo. Si solo cierras la ventana del navegador, el motor sigue procesando la cola.
+
+## Resolver problemas
+
+### Surco avisa que faltan archivos
+
+Vuelve a extraer el ZIP completo y abre `surco.exe` desde la carpeta extraída. El ejecutable utiliza las carpetas `bridge` y `runtime` que vienen junto a él.
+
+### La búsqueda o la ficha de un artista falla
+
+Comprueba la conexión a internet y repite la consulta. Si ya tienes el enlace del álbum, puedes pegarlo en el buscador para abrir esa edición directamente.
+
+### Una canción queda pendiente
+
+En **Descargas**, abre **Resultados por canción** para leer el motivo. Si YouTube pide iniciar sesión, abre **Ajustes** → **Acceso a fuentes que requieren sesión**, selecciona el navegador donde tienes iniciada la sesión y pulsa **Guardar ajustes**. Regresa a **Descargas** y pulsa **Reintentar pendientes**. Usa esta opción cuando decidas compartir esa sesión con el descargador. [Documentación de yt-dlp sobre cookies](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
+
+### Quiero actualizar Surco
+
+Cierra el motor y extrae el ZIP de la versión nueva en una carpeta. Al abrir el nuevo `surco.exe`, Surco lee el historial y los ajustes de `%LOCALAPPDATA%\Surco`. Tu música permanece en la carpeta que configuraste.
 
 Descarga contenido que tengas permiso de guardar. [Términos de YouTube](https://www.youtube.com/t/terms)
