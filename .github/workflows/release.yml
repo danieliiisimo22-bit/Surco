@@ -1,0 +1,45 @@
+name: Publicar Surco
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14.7'
+          architecture: x64
+      - name: Comprobar la etiqueta
+        run: |
+          $version = [regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version = "([^"]+)"').Groups[1].Value
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'La etiqueta debe coincidir con Cargo.toml.' }
+          "SURCO_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Compilar y probar el ZIP portable
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Empaquetar.ps1
+      - name: Publicar en GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = "dist/Surco-$env:SURCO_VERSION-windows-x64.zip"
+          $name = Split-Path -Leaf $zip
+          $notes = @"
+          Descarga **$name**, extrae todos los archivos y abre **surco.exe** en Windows 10 u 11 de 64 bits.
+
+          Busca música en YouTube Music y guarda hasta dos canciones por selección en MP3 o M4A. El ZIP incluye todas las dependencias y la guía LEEME.txt.
+          "@
+          $notesFile = Join-Path $env:RUNNER_TEMP 'surco-release.md'
+          Set-Content -LiteralPath $notesFile -Encoding UTF8 -Value $notes
+          gh release create $env:GITHUB_REF_NAME $zip "$zip.sha256" --verify-tag --title "Surco $env:SURCO_VERSION" --notes-file $notesFile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

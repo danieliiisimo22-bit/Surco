@@ -138,13 +138,28 @@ def client():
     truststore.inject_into_ssl()
     import requests
     from ytmusicapi import YTMusic
+    from ytmusicapi.navigation import CAROUSEL, CAROUSEL_TITLE, nav
+    from ytmusicapi.parsers.i18n import Parser
 
     class Session(requests.Session):
         def request(self, *args, **kwargs):
             kwargs.setdefault("timeout", 25)
             return super().request(*args, **kwargs)
 
-    return YTMusic(language="en", requests_session=Session())
+    class CatalogParser(Parser):
+        def parse_channel_contents(self, results):
+            # YouTube Music can include untitled promotional carousels on artist pages.
+            sections = [
+                row
+                for row in results
+                if CAROUSEL[0] not in row
+                or nav(row, CAROUSEL + CAROUSEL_TITLE + ["text"], True)
+            ]
+            return super().parse_channel_contents(sections)
+
+    api = YTMusic(language="en", requests_session=Session())
+    api.parser = CatalogParser(api.lang)
+    return api
 
 
 def resolve_id(api, value):
@@ -448,11 +463,16 @@ def main(request):
         r.raise_for_status()
         Image.open(io.BytesIO(r.content)).convert("RGB").save(request["path"], "JPEG")
         return {"ok": True}
+    if op == "artist":
+        try:
+            return artist_catalog(client(), request["id"])
+        except Exception as exc:
+            raise ValueError(
+                "No se pudo cargar la ficha del artista desde YouTube Music. Intenta abrirla de nuevo."
+            ) from exc
     api = client()
     if op == "search":
         return search_catalog(api, request["q"])
-    if op == "artist":
-        return artist_catalog(api, request["id"])
     if op == "album":
         bid = resolve_id(api, request["id"])
         a = api.get_album(bid)

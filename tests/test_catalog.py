@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 FFMPEG = (
@@ -15,6 +16,94 @@ FFMPEG = (
 )
 sys.path.insert(0, str(ROOT / "bridge"))
 import catalog
+
+
+class ArtistTests(unittest.TestCase):
+    def test_untitled_video_carousel_keeps_artist_releases(self):
+        from ytmusicapi import YTMusic
+
+        artist_id = "UC_test_artist"
+
+        def release_shelf(category, release_id, title):
+            return {
+                "musicCarouselShelfRenderer": {
+                    "header": {
+                        "musicCarouselShelfBasicHeaderRenderer": {
+                            "title": {"runs": [{"text": category}]},
+                        },
+                    },
+                    "contents": [
+                        {
+                            "musicTwoRowItemRenderer": {
+                                "title": {
+                                    "runs": [
+                                        {
+                                            "text": title,
+                                            "navigationEndpoint": {
+                                                "browseEndpoint": {"browseId": release_id},
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    ],
+                },
+            }
+
+        shelves = [
+            {
+                "musicCarouselShelfRenderer": {
+                    "contents": [
+                        {
+                            "musicTwoRowItemRenderer": {
+                                "title": {"runs": [{"text": "Watch the new music video"}]},
+                            },
+                        },
+                    ],
+                },
+            },
+            release_shelf("Albums", "MPRE_album", "Test Album"),
+            release_shelf("Singles & EPs", "MPRE_single", "Test Single"),
+        ]
+        response = {
+            "header": {
+                "musicImmersiveHeaderRenderer": {
+                    "title": {"runs": [{"text": "Test Artist"}]},
+                    "subscriptionButton": {
+                        "subscribeButtonRenderer": {
+                            "channelId": artist_id,
+                            "subscribed": False,
+                        },
+                    },
+                },
+            },
+            "contents": {
+                "singleColumnBrowseResultsRenderer": {
+                    "tabs": [
+                        {
+                            "tabRenderer": {
+                                "content": {"sectionListRenderer": {"contents": shelves}},
+                            },
+                        },
+                    ],
+                },
+            },
+        }
+        with patch.object(YTMusic, "_send_request", return_value=response):
+            result = catalog.main({"op": "artist", "id": artist_id})
+
+        self.assertEqual(result["title"], "Test Artist")
+        self.assertEqual(
+            [(row["id"], row["type"]) for row in result["releases"]],
+            [("MPRE_album", "Album"), ("MPRE_single", "Single")],
+        )
+
+    def test_artist_error_returns_a_readable_message(self):
+        with patch.object(catalog, "client", side_effect=KeyError("raw provider data")):
+            with self.assertRaisesRegex(ValueError, r"^No se pudo cargar la ficha del artista") as error:
+                catalog.main({"op": "artist", "id": "UC_test"})
+        self.assertNotIn("raw provider data", str(error.exception))
 
 
 class AlbumTests(unittest.TestCase):

@@ -83,7 +83,7 @@ test("unavailable videos cannot be selected in the interface", () => {
     `albumView({title:'Album',artist:'Artist',tracks:[{number:1,title:'Song',unavailable:true,reason:'No audio official'}]})`,
     c,
   );
-  assert.match(html, /data-track="1"[^>]*disabled/);
+  assert.match(html, /type="checkbox"[^>]*disabled/);
 });
 test("HTML in catalogue and errors is escaped", () => {
   const c = context();
@@ -93,6 +93,13 @@ test("HTML in catalogue and errors is escaped", () => {
   );
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /&lt;script&gt;/);
+});
+test("a fresh session starts with a blank search and empty selection", () => {
+  const c = context();
+  const html = vm.runInContext("albumsView()", c);
+  assert.match(html, /id="query"[^>]*value=""/);
+  assert.equal(vm.runInContext("basketSize()", c), 0);
+  assert.equal(vm.runInContext("state.jobs.length", c), 0);
 });
 test("polling shares the pending request and reports stale data honestly", async () => {
   const c = context();
@@ -122,7 +129,7 @@ test("song selection requires its exact audio ID in the chosen publication", () 
     {number:4,video_id:'studio-audio'},
     {number:5,video_id:'other-mix'},
     {number:6,video_id:'blocked',unavailable:true}
-  ]}, {whole:false,songs:new Map([['studio-audio','Thriller'],['wrong-id','Beat It'],['blocked','Blocked']])})`,
+  ]}, {songs:new Map([['studio-audio','Thriller'],['wrong-id','Beat It'],['blocked','Blocked']])})`,
     c,
   );
   assert.deepEqual(Array.from(plan.tracks), [4]);
@@ -132,8 +139,8 @@ test("a failed publication stays selected after the other publication queues", a
   const c = context();
   await vm.runInContext(
     `(async () => {
-    selection('first', 'First').whole = true;
-    selection('second', 'Second').whole = true;
+    selection('first', 'First').songs.set('track1', 'Song 1');
+    selection('second', 'Second').songs.set('track2', 'Song 2');
     api = async (path) => {
       if (path === '/albums/first') return {id:'first', tracks:[{number:1,video_id:'track1'}]};
       if (path === '/albums/second') throw Error('Offline');
@@ -146,4 +153,26 @@ test("a failed publication stays selected after the other publication queues", a
   assert.equal(vm.runInContext("state.basket.has('first')", c), false);
   assert.equal(vm.runInContext("state.basket.has('second')", c), true);
   assert.match(vm.runInContext("state.error", c), /Second: Offline/);
+});
+
+test("the two-song limit applies across releases and a deselection frees a slot", () => {
+  const c = context();
+  vm.runInContext("toast = () => {}", c);
+  const checkbox = (id, releaseId) => ({
+    checked: true,
+    dataset: { song: id, title: id, releaseId, releaseTitle: releaseId },
+  });
+  const first = checkbox("song1", "album1");
+  const second = checkbox("song2", "album2");
+  const third = checkbox("song3", "album3");
+  const change = (target) => c.listeners.change({ target });
+  [first, second, third].forEach(change);
+  assert.equal(third.checked, false);
+  assert.equal(vm.runInContext("basketSize()", c), 2);
+  first.checked = false;
+  change(first);
+  third.checked = true;
+  change(third);
+  assert.equal(third.checked, true);
+  assert.equal(vm.runInContext("basketSize()", c), 2);
 });

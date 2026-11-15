@@ -18,6 +18,10 @@ pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     cmd
 }
 pub fn python(root: &Path) -> PathBuf {
+    let bundled = root.join("runtime/python/python.exe");
+    if bundled.is_file() {
+        return bundled;
+    }
     root.join("runtime/python/Scripts/python.exe")
 }
 
@@ -61,7 +65,8 @@ pub async fn run(mut cmd: Command, seconds: u64) -> Result<std::process::Output>
 }
 pub async fn bridge(root: &Path, value: Value) -> Result<Value> {
     let mut cmd = command(python(root));
-    cmd.arg(root.join("bridge/catalog.py"))
+    cmd.arg("-B")
+        .arg(root.join("bridge/catalog.py"))
         .current_dir(root)
         .env("PYTHONUTF8", "1")
         .stdin(Stdio::piped())

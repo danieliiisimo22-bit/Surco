@@ -12,6 +12,8 @@ const $ = (s) => document.querySelector(s),
           "'": "&#39;",
         })[c],
     );
+const maxSongs = 2;
+const selectionLimitMessage = `Puedes descargar hasta ${maxSongs} canciones por vez.`;
 const state = {
   page: "albums",
   token: "",
@@ -23,7 +25,6 @@ const state = {
   basket: new Map(),
   query: "",
   album: null,
-  selected: new Set(),
   jobs: [],
   request: 0,
   busy: false,
@@ -103,13 +104,11 @@ function render() {
     settings: settingsView,
   };
   $("#main").innerHTML = views[state.page]();
-  if (state.page === "albums" && state.album) updateSelection();
 }
 function selection(id, title) {
   if (!state.basket.has(id)) {
     state.basket.set(id, {
       title,
-      whole: false,
       songs: new Map(),
     });
   }
@@ -118,14 +117,16 @@ function selection(id, title) {
 
 function cleanSelection(id) {
   const entry = state.basket.get(id);
-  if (entry && !entry.whole && !entry.songs.size) state.basket.delete(id);
+  if (entry && !entry.songs.size) state.basket.delete(id);
+}
+
+function basketSize() {
+  return Array.from(state.basket.values()).reduce((count, entry) => count + entry.songs.size, 0);
 }
 
 function basketLabel() {
   if (state.queueing) return "Preparando…";
-  const count = state.basket.size;
-  if (!count) return "Descargar selección";
-  return `Descargar selección · ${count} ${count === 1 ? "publicación" : "publicaciones"}`;
+  return `Descargar selección · ${basketSize()}/${maxSongs}`;
 }
 
 function basketButton() {
@@ -141,32 +142,32 @@ function updateBasketButton() {
 }
 
 function releaseCard(release) {
-  const entry = state.basket.get(release.id);
-  return `<article class="release-card">
-    <button class="album-card" data-album="${esc(release.id)}">
+  return `<button class="album-card" data-album="${esc(release.id)}">
       ${cover(release)}
       <h3>${esc(release.title)}</h3>
       <p>${esc(release.artist)}</p>
       <p class="muted">${[release.year, release.type || "Álbum"].filter(Boolean).map(esc).join(" · ")}</p>
-    </button>
-    <label class="release-check">
-      <input type="checkbox" data-release="${esc(release.id)}" data-title="${esc(release.title)}"
-        aria-label="Seleccionar publicación ${esc(release.title)}" ${entry?.whole ? "checked" : ""}>
-      Completo
-    </label>
-  </article>`;
+    </button>`;
+}
+
+function songCheckbox(song, album) {
+  const checked = state.basket.get(album.id)?.songs.has(song.id);
+  return `<input type="checkbox" data-song="${esc(song.id)}" data-release-id="${esc(album.id)}"
+      data-title="${esc(song.title)}" data-release-title="${esc(album.title)}"
+      aria-label="Seleccionar ${esc(song.title)}" ${checked ? "checked" : ""} ${song.unavailable ? "disabled" : ""}>`;
 }
 
 function songRow(song) {
-  const entry = state.basket.get(song.album_id);
   return `<div class="song-row">
-    <input type="checkbox" data-song="${esc(song.id)}" data-release-id="${esc(song.album_id)}"
-      data-title="${esc(song.title)}" data-release-title="${esc(song.album)}"
-      aria-label="Seleccionar ${esc(song.title)}" ${entry?.songs.has(song.id) || entry?.whole ? "checked" : ""} ${entry?.whole ? "disabled" : ""}>
+    ${songCheckbox(song, { id: song.album_id, title: song.album })}
     ${cover(song, "song-cover")}
     <div><strong>${esc(song.title)}</strong><br><small>${esc(song.album || song.artist)}</small></div>
     <span class="duration">${time(song.duration)}</span>
   </div>`;
+}
+
+function isSingle(release) {
+  return /^(single|ep)$/i.test(release.type);
 }
 
 function artistView(artist) {
@@ -176,12 +177,8 @@ function artistView(artist) {
     singles: "Sencillos y EP",
   };
   const tab = state.artistTab;
-  const albums = artist.releases.filter(
-    (release) => !/^(single|ep)$/i.test(release.type),
-  );
-  const singles = artist.releases.filter((release) =>
-    /^(single|ep)$/i.test(release.type),
-  );
+  const albums = artist.releases.filter((release) => !isSingle(release));
+  const singles = artist.releases.filter(isSingle);
   const rows =
     tab === "songs" ? artist.songs : tab === "albums" ? albums : singles;
   const cards = rows.map(tab === "songs" ? songRow : releaseCard).join("");
@@ -221,7 +218,7 @@ function albumsView() {
         ? `<section class="intro">
       <div>
         <h1>Buscar música</h1>
-        <p class="muted">Explora artistas y elige canciones o publicaciones para guardar.</p>
+        <p class="muted">Explora artistas y álbumes. ${selectionLimitMessage}</p>
       </div>
       <div class="record" aria-hidden="true"></div>
     </section>`
@@ -241,10 +238,8 @@ function albumsView() {
       ${artists ? `<h2>Artistas</h2><div class="artists">${artists}</div>` : ""}
       ${releases ? `<h2>Publicaciones</h2><div class="grid">${releases}</div>` : ""}
       ${
-        !artists && !releases
-          ? state.searched && !state.error
-            ? '<div class="empty">No encontramos resultados para esa búsqueda.</div>'
-            : '<p class="search-help">Por ejemplo, Michael Jackson o Soda Stereo.</p>'
+        !artists && !releases && state.searched && !state.error
+          ? '<div class="empty">No encontramos resultados para esa búsqueda.</div>'
           : ""
       }
     `
@@ -257,8 +252,7 @@ function trackRow(track, album) {
       ? `La grabación también está publicada en ${esc(track.source_album)}. Se guardará en ${esc(album.title)}.`
       : "";
   return `<div class="track-row ${track.unavailable ? "blocked" : ""}">
-    <input type="checkbox" data-track="${track.number}" aria-label="Seleccionar ${esc(track.title)}"
-      ${state.selected.has(track.number) ? "checked" : ""} ${track.unavailable ? "disabled" : ""}>
+    ${songCheckbox({ ...track, id: track.video_id }, album)}
     <span class="number">${String(track.number).padStart(2, "0")}</span>
     <div><strong>${esc(track.title)}</strong>${hint ? `<small>${hint}</small>` : ""}</div>
     <span class="duration">${time(track.duration)}</span>
@@ -267,7 +261,6 @@ function trackRow(track, album) {
 
 function albumView(album) {
   const versions = album.other_versions || [];
-  const available = album.tracks.some((track) => !track.unavailable);
   return `<button class="subtle back" data-action="back">← Volver a resultados</button>
     <section class="album-top">${cover(album)}<div>
       <h1>${esc(album.title)}</h1>
@@ -282,21 +275,13 @@ function albumView(album) {
     }
     ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
     <div class="track-toolbar">
-      <label><input type="checkbox" id="all" ${available ? "" : "disabled"}> Seleccionar disponibles</label>
+      <span class="muted">Elige hasta ${maxSongs} canciones.</span>
       ${basketButton()}
     </div>
     <div class="track-list">${album.tracks.map((track) => trackRow(track, album)).join("")}</div>
     <p class="note">Destino: ${esc(state.config.directory)} · ${state.config.format === "mp3" ? "MP3 320 kbps" : "M4A, audio original"}</p>`;
 }
 
-function updateSelection() {
-  const total = state.album.tracks.filter((track) => !track.unavailable).length;
-  const selectAll = $("#all");
-  selectAll.checked = total > 0 && state.selected.size === total;
-  selectAll.indeterminate =
-    state.selected.size > 0 && state.selected.size < total;
-  updateBasketButton();
-}
 function jobOutcome(item) {
   const error = item.status === "error";
   const needsSession = error && /sign in|log in|bot|cookies/i.test(item.detail);
@@ -423,7 +408,9 @@ async function openArtist(id) {
     const artist = await api("/artists/" + encodeURIComponent(id));
     if (serial !== state.request || state.page !== "albums") return;
     state.artist = artist;
-    state.artistTab = "songs";
+    if (artist.songs.length) state.artistTab = "songs";
+    else if (artist.releases.some((release) => !isSingle(release))) state.artistTab = "albums";
+    else state.artistTab = artist.releases.length ? "singles" : "songs";
   } catch (error) {
     if (serial === state.request) state.error = error.message;
   } finally {
@@ -444,7 +431,6 @@ async function openAlbum(id) {
     const a = await api("/albums/" + encodeURIComponent(id));
     if (serial !== state.request || state.page !== "albums") return;
     state.album = a;
-    state.selected = new Set(planDownload(a, state.basket.get(a.id)).tracks);
   } catch (e) {
     if (serial === state.request) state.error = e.message;
   } finally {
@@ -501,34 +487,22 @@ document.addEventListener("submit", (e) => {
     }
   })().catch((e) => toast(e.message, true));
 });
-function saveAlbumSelection() {
-  const album = state.album;
-  const entry = selection(album.id, album.title);
-  entry.whole = false;
-  for (const track of album.tracks) {
-    if (track.unavailable) continue;
-    if (state.selected.has(track.number))
-      entry.songs.set(track.video_id, track.title);
-    else entry.songs.delete(track.video_id);
-  }
-  cleanSelection(album.id);
-}
-
 function planDownload(album, entry) {
   if (!entry) return { tracks: [], missing: new Map() };
   const available = album.tracks.filter((track) => !track.unavailable);
   const missing = new Map(entry.songs);
   const tracks = available
-    .filter((track) => {
-      const selectedSong = missing.delete(track.video_id);
-      return entry.whole || selectedSong;
-    })
+    .filter((track) => missing.delete(track.video_id))
     .map((track) => track.number);
   return { tracks, missing };
 }
 
 async function downloadBasket() {
   if (state.queueing || !state.basket.size) return;
+  if (basketSize() > maxSongs) {
+    toast(selectionLimitMessage, true);
+    return;
+  }
   state.queueing = true;
   state.error = "";
   render();
@@ -549,7 +523,6 @@ async function downloadBasket() {
           );
           state.basket.set(id, {
             ...entry,
-            whole: false,
             songs: missing,
           });
         } else {
@@ -570,62 +543,31 @@ async function downloadBasket() {
     }
   } finally {
     state.queueing = false;
-    if (state.album) {
-      state.selected = new Set(
-        planDownload(state.album, state.basket.get(state.album.id)).tracks,
-      );
-    }
     render();
   }
 }
 
 document.addEventListener("change", (e) => {
   const { target } = e;
-  if (
-    !(
-      target.dataset.release ||
-      target.dataset.song ||
-      target.dataset.track ||
-      target.id === "all"
-    )
-  )
-    return;
+  const { song, title, releaseId, releaseTitle } = target.dataset;
+  if (!song) return;
   if (state.queueing) {
     render();
     return;
   }
-  if (target.dataset.release) {
-    const id = target.dataset.release;
-    selection(id, target.dataset.title).whole = target.checked;
-    cleanSelection(id);
-    updateBasketButton();
+  if (target.checked) {
+    const alreadySelected = state.basket.get(releaseId)?.songs.has(song);
+    if (!alreadySelected && basketSize() >= maxSongs) {
+      target.checked = false;
+      toast(selectionLimitMessage, true);
+      return;
+    }
+    selection(releaseId, releaseTitle).songs.set(song, title);
+  } else {
+    state.basket.get(releaseId)?.songs.delete(song);
+    cleanSelection(releaseId);
   }
-  if (target.dataset.song) {
-    const id = target.dataset.releaseId;
-    const songs = selection(id, target.dataset.releaseTitle).songs;
-    if (target.checked) songs.set(target.dataset.song, target.dataset.title);
-    else songs.delete(target.dataset.song);
-    cleanSelection(id);
-    updateBasketButton();
-  }
-  if (target.dataset.track) {
-    const number = Number(target.dataset.track);
-    if (target.checked) state.selected.add(number);
-    else state.selected.delete(number);
-    saveAlbumSelection();
-    updateSelection();
-  }
-  if (target.id === "all") {
-    state.selected = new Set(
-      target.checked
-        ? state.album.tracks
-            .filter((track) => !track.unavailable)
-            .map((track) => track.number)
-        : [],
-    );
-    saveAlbumSelection();
-    render();
-  }
+  updateBasketButton();
 });
 document.addEventListener("click", (e) => {
   const b = e.target.closest("button");
@@ -723,7 +665,7 @@ async function init() {
     }
     if (!data.ready)
       throw Error(
-        "Faltan componentes de audio. Sigue los pasos de instalación del README.",
+        "Faltan archivos de Surco. Extrae el ZIP por completo y abre surco.exe desde esa carpeta.",
       );
     render();
     await poll();

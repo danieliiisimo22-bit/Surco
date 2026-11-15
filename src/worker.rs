@@ -180,7 +180,8 @@ async fn track(app: &App, job: &Job, index: usize, cover: &Path) -> Result<Outco
         )
         .await?;
         let mut cmd = process::command(process::python(&app.root));
-        cmd.arg(app.root.join("bridge/download.py"))
+        cmd.arg("-B")
+            .arg(app.root.join("bridge/download.py"))
             .args([
                 "--ignore-config",
                 "--no-playlist",

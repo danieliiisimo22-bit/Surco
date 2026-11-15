@@ -26,6 +26,7 @@ use tokio::sync::Mutex;
 pub struct App {
     root: PathBuf,
     data_dir: PathBuf,
+    port: u16,
     profile: String,
     closing: std::sync::atomic::AtomicBool,
     worker_error: Mutex<Option<String>>,
@@ -66,7 +67,8 @@ async fn guard(State(app): State<Arc<App>>, req: Request, next: Next) -> Respons
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    if !["127.0.0.1:8737", "localhost:8737"].contains(&host) {
+    let port = app.port.to_string();
+    if !matches!(host.rsplit_once(':'), Some(("127.0.0.1" | "localhost", p)) if p == port) {
         return StatusCode::FORBIDDEN.into_response();
     }
     if let Some(origin) = req.headers().get(header::ORIGIN)
@@ -99,11 +101,13 @@ async fn guard(State(app): State<Arc<App>>, req: Request, next: Next) -> Respons
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"app":"Surco Rust","version":"1.0.0","uptime_ms":app.started.elapsed().as_millis(),"profile":app.profile}),
+        json!({"app":"Surco Rust","version":env!("CARGO_PKG_VERSION"),"uptime_ms":app.started.elapsed().as_millis(),"profile":app.profile}),
     )
 }
 async fn bootstrap(State(app): State<Arc<App>>) -> Json<Value> {
-    let ready = process::python(&app.root).is_file()
+    let ready = app.root.join("bridge/catalog.py").is_file()
+        && app.root.join("bridge/download.py").is_file()
+        && process::python(&app.root).is_file()
         && process::runtime_tool(&app.root, "ffmpeg.exe").is_ok()
         && process::runtime_tool(&app.root, "node.exe").is_ok();
     let warnings =
@@ -161,7 +165,15 @@ struct Download {
     album_id: String,
     tracks: Vec<usize>,
 }
+const MAX_SONGS: usize = 2;
 async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> ApiResult<Value> {
+    let mut indices = input.tracks;
+    indices.sort_unstable();
+    indices.dedup();
+    ensure_api!(
+        indices.len() <= MAX_SONGS,
+        "Puedes descargar hasta dos canciones por vez."
+    );
     let a = app
         .albums
         .lock()
@@ -169,9 +181,6 @@ async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> A
         .get(&input.album_id)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Vuelve a abrir el álbum antes de descargar."))?;
-    let mut indices = input.tracks;
-    indices.sort();
-    indices.dedup();
     ensure_api!(
         !indices.is_empty() && indices.iter().all(|i| *i > 0 && *i <= a.tracks.len()),
         "Selecciona pistas válidas del álbum."
@@ -505,7 +514,14 @@ fn check_running_instance(response: &[u8], profile: &str) -> Result<()> {
 
 async fn run() -> Result<()> {
     let start = Instant::now();
+    let headless = std::env::args().any(|arg| arg == "--headless");
+    let port = if headless && std::env::args().any(|arg| arg == "--ephemeral-port") {
+        0
+    } else {
+        8737
+    };
     let root = std::env::current_exe()?.parent().unwrap().to_path_buf();
+    #[cfg(debug_assertions)]
     let root = if root.join("bridge/catalog.py").is_file() {
         root
     } else {
@@ -514,7 +530,8 @@ async fn run() -> Result<()> {
     let data_dir = store::data(&root);
     std::fs::create_dir_all(&data_dir)?;
     let profile = store::profile_id(&data_dir)?;
-    let listener = match tokio::net::TcpListener::bind("127.0.0.1:8737").await {
+    let listener = match tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await
+    {
         Ok(l) => l,
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -527,7 +544,7 @@ async fn run() -> Result<()> {
             )
             .await??;
             check_running_instance(&response, &profile)?;
-            if !std::env::args().any(|a| a == "--headless") {
+            if !headless {
                 open_window();
             }
             return Ok(());
@@ -561,6 +578,7 @@ async fn run() -> Result<()> {
     let app = Arc::new(App {
         root,
         data_dir,
+        port: listener.local_addr()?.port(),
         profile,
         closing: false.into(),
         worker_error: Mutex::new(None),
@@ -574,9 +592,9 @@ async fn run() -> Result<()> {
     tokio::spawn(worker::dispatch(app.clone()));
     store::save(
         &app.data_dir.join("startup.json"),
-        &json!({"ready_ms":start.elapsed().as_millis(),"version":"1.0.0"}),
+        &json!({"ready_ms":start.elapsed().as_millis(),"version":env!("CARGO_PKG_VERSION"),"port":app.port}),
     )?;
-    if !std::env::args().any(|a| a == "--headless") {
+    if !headless {
         open_window();
     }
     axum::serve(listener, router(app)).await?;
@@ -611,6 +629,7 @@ mod tests {
         Arc::new(App {
             root: root.into(),
             data_dir: root.into(),
+            port: 8737,
             profile: store::profile_id(root).unwrap(),
             closing: false.into(),
             worker_error: Mutex::new(None),
@@ -692,6 +711,34 @@ mod tests {
             serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(v["duplicate"], false);
         assert_eq!(store::jobs(d.path()).unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn download_rejects_three_songs_and_accepts_two() {
+        let d = tempfile::tempdir().unwrap();
+        let app = test_app(d.path());
+        let album: Album =
+            serde_json::from_str(include_str!("../tests/fixtures/beatles-manifest.json")).unwrap();
+        let id = album.id.clone();
+        app.albums.lock().await.insert(id.clone(), album);
+
+        let send = |tracks: &[usize]| {
+            router(app.clone()).oneshot(req(
+                "POST",
+                "/api/download",
+                "test-token",
+                json!({"album_id":id,"tracks":tracks}),
+            ))
+        };
+        let rejected = send(&[1, 2, 3]).await.unwrap();
+        assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+        assert!(store::jobs(d.path()).unwrap().is_empty());
+
+        let accepted = send(&[1, 1, 2]).await.unwrap();
+        assert_eq!(accepted.status(), StatusCode::OK);
+        let jobs = store::jobs(d.path()).unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].items.len(), 2);
     }
     #[tokio::test]
     async fn unknown_album_cannot_inject_a_source() {

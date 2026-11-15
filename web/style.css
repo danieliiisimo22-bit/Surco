@@ -383,15 +383,6 @@ small,
   gap: 12px;
   padding: 12px 0;
 }
-.track-toolbar label {
-  min-width: 0;
-  max-width: 100%;
-}
-.track-toolbar select {
-  display: block;
-  max-width: 100%;
-  margin-top: 4px;
-}
 .track-list {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -703,20 +694,6 @@ footer {
 }
 .artist-tabs [aria-pressed="true"]:hover {
   background: var(--accent-hover);
-}
-.release-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 4px;
-}
-.release-card .album-card {
-  flex: 1;
-}
-.release-check {
-  padding: 4px;
-  color: var(--muted);
-  cursor: pointer;
 }
 .song-row {
   display: grid;

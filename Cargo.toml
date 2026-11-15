@@ -22,3 +22,4 @@ http-body-util = "0.1"
 [profile.release]
 strip = true
 lto = "thin"
+

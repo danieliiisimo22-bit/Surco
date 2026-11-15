@@ -406,3 +406,4 @@ export function liquidGlass(el, options = {}) {
   schedule();
   return api;
 }
+
