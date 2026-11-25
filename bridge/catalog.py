@@ -370,6 +370,39 @@ def search_catalog(api, query):
         }
 
 
+def search_lyrics(api, query):
+    tracks = {}
+    for row in api.search(query, filter="songs", limit=20):
+        video_id = row.get("videoId") or ""
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id) and row.get("title"):
+            tracks.setdefault(
+                video_id,
+                dict(
+                    id=video_id,
+                    title=row["title"],
+                    artist=names(row.get("artists")),
+                    album=(row.get("album") or {}).get("name", ""),
+                    image=image(row),
+                    duration=seconds(row.get("duration_seconds") or row.get("duration")),
+                ),
+            )
+    return list(tracks.values())
+
+
+def track_lyrics(api, playlist):
+    if not playlist.get("lyrics"):
+        return dict(lyrics="", lyrics_status="No disponible en la fuente")
+    try:
+        result = api.get_lyrics(playlist["lyrics"]) or {}
+        lyric = result.get("lyrics") or ""
+    except Exception:
+        return dict(lyrics="", lyrics_status="No se pudo consultar la letra")
+    return dict(
+        lyrics=lyric,
+        lyrics_status="Disponible" if lyric else "No disponible en la fuente",
+    )
+
+
 def artist_catalog(api, artist_id):
     artist = api.get_artist(artist_id)
     name = artist["name"]
@@ -473,6 +506,8 @@ def main(request):
     api = client()
     if op == "search":
         return search_catalog(api, request["q"])
+    if op == "search_lyrics":
+        return search_lyrics(api, request["q"])
     if op == "album":
         bid = resolve_id(api, request["id"])
         a = api.get_album(bid)
@@ -482,7 +517,7 @@ def main(request):
                 "El catálogo no publicó una lista de audio para este álbum."
             )
         return build_album(bid, a, api.get_playlist(playlist, limit=None))
-    if op == "source":
+    if op in ("source", "lyrics"):
         data = api.get_watch_playlist(videoId=request["id"], limit=1)
         row = next(
             (t for t in data.get("tracks", []) if t.get("videoId") == request["id"]),
@@ -492,22 +527,16 @@ def main(request):
             raise ValueError(
                 "La fuente de audio ya no está disponible. No se elegirá otra grabación."
             )
-        lyric = ""
-        lyric_status = "No disponible en la fuente"
-        if data.get("lyrics"):
-            try:
-                result = api.get_lyrics(data["lyrics"]) or {}
-                lyric = result.get("lyrics") or ""
-            except Exception:
-                lyric_status = "No se pudo consultar; el audio se conserva"
+        lyric = track_lyrics(api, data)
+        if op == "lyrics":
+            return lyric
         return dict(
             video_id=row["videoId"],
             source_type=row.get("videoType", ""),
             title=row.get("title", ""),
             artist=names(row.get("artists")),
             duration=seconds(row.get("length")),
-            lyrics=lyric,
-            lyrics_status=lyric_status,
+            **lyric,
         )
     raise ValueError("Operación no reconocida.")
 

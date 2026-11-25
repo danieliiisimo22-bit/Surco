@@ -2,9 +2,9 @@
 
 ## Abrir Surco por primera vez
 
-1. En **Releases** de Surco en GitHub, abre **Assets** y descarga `Surco-1.0.0-windows-x64.zip`. El paquete es portable y funciona en Windows 10 y 11 de 64 bits.
+1. En **Releases** de Surco en GitHub, abre **Assets** y descarga el ZIP que termina en `-windows-x64.zip`. El paquete es portable y funciona en Windows 10 y 11 de 64 bits.
 2. Haz clic derecho en el ZIP y elige **Extraer todo**. Si ya lo extrajiste, continúa en la carpeta que creó Windows.
-3. Abre `surco.exe`. Surco muestra su interfaz en Edge o en el navegador predeterminado. Mantén `surco.exe`, `bridge` y `runtime` en la misma carpeta.
+3. Abre `surco.exe`. La ventana de Surco usa Microsoft Edge o Google Chrome. Mantén `surco.exe`, `bridge` y `runtime` en la misma carpeta.
 
 La primera vez que abres Surco con tu usuario de Windows, el buscador y el historial están vacíos. Las carpetas extraídas en el mismo perfil de Windows comparten el historial y los ajustes.
 
@@ -12,10 +12,14 @@ La primera vez que abres Surco con tu usuario de Windows, el buscador y el histo
 
 1. Escribe el nombre de un artista o álbum y pulsa **Buscar**. También puedes pegar un enlace de álbum de YouTube Music.
 2. Si abres un artista, elige **Canciones**, **Álbumes** o **Sencillos y EP**. En la ficha de un álbum aparecen las pistas de esa edición. Usa **Otras ediciones** cuando el catálogo ofrezca variantes.
-3. Marca una o dos canciones. Puedes elegirlas en álbumes distintos. Para cambiar una pista cuando el botón indica **2/2**, desmárcala primero en la lista donde la elegiste.
-4. Pulsa **Descargar selección**. En **Descargas**, abre **Resultados por canción** para ver el estado de cada pista. Con **Abrir carpeta** puedes encontrar los archivos que se guardaron.
+3. Marca las canciones que quieras, incluso de distintos álbumes. Usa **Seleccionar álbum completo** para marcar todas las pistas disponibles de la edición abierta. Puedes volver a los resultados y marcar otros álbumes antes de enviar la selección.
+4. Pulsa **Descargar selección** para añadir las pistas a la cola. Surco las procesa una a la vez. En **Descargas**, abre **Resultados por canción** para ver el estado de cada pista. Con **Abrir carpeta** puedes encontrar los archivos que se guardaron.
 
 Surco usa el audio oficial que corresponde a la edición elegida. Cuando el catálogo no permite confirmar ese audio o la pista está bloqueada, la interfaz muestra el motivo.
+
+## Comprobar letras
+
+Abre **Letras**, busca por canción o artista y pulsa **Comprobar letra** en el resultado que quieras. Si YouTube Music ofrece la letra, aparecerá en la misma pestaña.
 
 ## Elegir el formato y la carpeta
 
@@ -27,7 +31,7 @@ La carpeta inicial es `%USERPROFILE%\Music\Surco`. Puedes abrirla desde **Abrir 
 
 - **Pausar** detiene temporalmente el trabajo. **Continuar** lo devuelve a la cola.
 - **Reintentar pendientes** vuelve a intentar las pistas que quedaron sin guardar.
-- **Cerrar motor**, al pie de la ventana, cierra Surco y pausa el trabajo activo. Si solo cierras la ventana del navegador, el motor sigue procesando la cola.
+- La **X** de la ventana cierra Surco y deja en pausa el trabajo activo. Cuando vuelvas a abrirlo, puedes pulsar **Continuar** en **Descargas**.
 
 ## Resolver problemas
 
@@ -45,6 +49,6 @@ En **Descargas**, abre **Resultados por canción** para leer el motivo. Si YouTu
 
 ### Quiero actualizar Surco
 
-Cierra el motor y extrae el ZIP de la versión nueva en una carpeta. Al abrir el nuevo `surco.exe`, Surco lee el historial y los ajustes de `%LOCALAPPDATA%\Surco`. Tu música permanece en la carpeta que configuraste.
+Cierra Surco y extrae el ZIP de la versión nueva en una carpeta. Al abrir el nuevo `surco.exe`, Surco lee el historial y los ajustes de `%LOCALAPPDATA%\Surco`. Tu música permanece en la carpeta que configuraste.
 
 Descarga contenido que tengas permiso de guardar. [Términos de YouTube](https://www.youtube.com/t/terms)

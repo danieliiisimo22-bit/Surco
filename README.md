@@ -1,17 +1,19 @@
 <p align="center"><img src="web/surco.svg" alt="" width="68"></p>
 <h1 align="center">Surco</h1>
-<p align="center">Busca en YouTube Music y guarda hasta dos canciones por descarga en MP3 o M4A.</p>
-<p align="center"><strong><a href="../../releases/download/v1.0.0/Surco-1.0.0-windows-x64.zip">Descargar para Windows</a></strong> · <a href="#capturas">Capturas</a> · <a href="docs/uso.md">Guía de uso</a> · <a href="docs/compilar.md">Compilar</a></p>
+<p align="center">Busca en YouTube Music y añade canciones o álbumes completos a la cola de descargas en MP3 o M4A.</p>
+<p align="center"><strong><a href="../../releases/latest">Descargar para Windows</a></strong> · <a href="#capturas">Capturas</a> · <a href="docs/uso.md">Guía de uso</a> · <a href="docs/compilar.md">Compilar</a></p>
 
 ![Pantalla inicial de Surco con el buscador vacío](docs/screenshots/inicio.webp)
 
 ## Empezar en tres pasos
 
 1. Descarga el ZIP portable para **Windows 10 u 11 de 64 bits**. Python, Node.js y FFmpeg vienen en el paquete.
-2. Haz clic derecho sobre el ZIP, elige **Extraer todo** y abre `surco.exe` en la carpeta extraída. Surco se abre en Edge o en tu navegador predeterminado.
-3. Busca un **artista**, un **álbum** o pega un **enlace de álbum de YouTube Music**. Marca una o dos pistas y pulsa **Descargar selección**.
+2. Haz clic derecho sobre el ZIP, elige **Extraer todo** y abre `surco.exe` en la carpeta extraída. La ventana de Surco usa Microsoft Edge o Google Chrome.
+3. Busca un **artista**, un **álbum** o pega un **enlace de álbum de YouTube Music**. Marca las pistas que quieras o usa **Seleccionar álbum completo** y pulsa **Descargar selección**.
 
 En **Descargas** puedes ver el progreso, pausar o reintentar pistas y abrir la carpeta de los archivos guardados. **Ajustes** permite cambiar la carpeta y elegir el formato de audio.
+
+En **Letras** puedes buscar una canción y comprobar si YouTube Music ofrece su letra. La **X** de la ventana cierra Surco y pausa la descarga activa.
 
 ## Capturas
 
@@ -23,9 +25,9 @@ Busca **Soda Stereo**, abre la ficha del artista y elige **Álbumes**. La ficha 
 
 ### Elegir dos canciones de una edición
 
-En **Nada Personal**, marcamos **Nada Personal** y **Cuando Pase El Temblor**. El botón muestra **2/2**. También puedes combinar pistas de publicaciones distintas.
+En **Nada Personal**, marcamos **Nada Personal** y **Cuando Pase El Temblor**. También puedes seleccionar todo el álbum o combinar pistas de publicaciones distintas.
 
-![Álbum Nada Personal de Soda Stereo con dos canciones marcadas y el botón Descargar selección mostrando 2 de 2](docs/screenshots/seleccion.webp)
+![Álbum Nada Personal de Soda Stereo con dos canciones marcadas en una versión anterior de Surco](docs/screenshots/seleccion.webp)
 
 ## Archivos y formatos
 

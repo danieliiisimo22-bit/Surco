@@ -12,8 +12,6 @@ const $ = (s) => document.querySelector(s),
           "'": "&#39;",
         })[c],
     );
-const maxSongs = 2;
-const selectionLimitMessage = `Puedes descargar hasta ${maxSongs} canciones por vez.`;
 const state = {
   page: "albums",
   token: "",
@@ -33,6 +31,7 @@ const state = {
   jobsSignature: "",
   polling: false,
   queueing: false,
+  lyrics: { query: "", results: null, song: null, result: null, busy: false, error: "", request: 0 },
 };
 const label = {
   queued: "En espera",
@@ -101,9 +100,11 @@ function render() {
   const views = {
     albums: albumsView,
     jobs: jobsView,
+    lyrics: lyricsView,
     settings: settingsView,
   };
   $("#main").innerHTML = views[state.page]();
+  if (state.page === "albums" && state.album) syncAlbumSelection();
 }
 function selection(id, title) {
   if (!state.basket.has(id)) {
@@ -126,7 +127,7 @@ function basketSize() {
 
 function basketLabel() {
   if (state.queueing) return "Preparando…";
-  return `Descargar selección · ${basketSize()}/${maxSongs}`;
+  return `Descargar selección · ${basketSize()}`;
 }
 
 function basketButton() {
@@ -154,7 +155,7 @@ function songCheckbox(song, album) {
   const checked = state.basket.get(album.id)?.songs.has(song.id);
   return `<input type="checkbox" data-song="${esc(song.id)}" data-release-id="${esc(album.id)}"
       data-title="${esc(song.title)}" data-release-title="${esc(album.title)}"
-      aria-label="Seleccionar ${esc(song.title)}" ${checked ? "checked" : ""} ${song.unavailable ? "disabled" : ""}>`;
+      aria-label="Seleccionar ${esc(song.title)}" ${checked ? "checked" : ""} ${song.unavailable || state.queueing ? "disabled" : ""}>`;
 }
 
 function songRow(song) {
@@ -218,7 +219,7 @@ function albumsView() {
         ? `<section class="intro">
       <div>
         <h1>Buscar música</h1>
-        <p class="muted">Explora artistas y álbumes. ${selectionLimitMessage}</p>
+        <p class="muted">Explora artistas y álbumes.</p>
       </div>
       <div class="record" aria-hidden="true"></div>
     </section>`
@@ -275,11 +276,27 @@ function albumView(album) {
     }
     ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
     <div class="track-toolbar">
-      <span class="muted">Elige hasta ${maxSongs} canciones.</span>
+      <label class="album-selection">
+        <input type="checkbox" id="select-album" ${state.queueing || album.tracks.every((track) => track.unavailable) ? "disabled" : ""}>
+        Seleccionar álbum completo
+      </label>
       ${basketButton()}
     </div>
-    <div class="track-list">${album.tracks.map((track) => trackRow(track, album)).join("")}</div>
+    <div class="track-list" id="album-tracks">${album.tracks.map((track) => trackRow(track, album)).join("")}</div>
     <p class="note">Destino: ${esc(state.config.directory)} · ${state.config.format === "mp3" ? "MP3 320 kbps" : "M4A, audio original"}</p>`;
+}
+
+function syncAlbumSelection() {
+  const album = state.album;
+  const master = $("#select-album");
+  const songs = state.basket.get(album.id)?.songs;
+  const available = album.tracks.filter((track) => !track.unavailable);
+  const selected = available.filter((track) => songs?.has(track.video_id)).length;
+  master.checked = selected > 0 && selected === available.length;
+  master.indeterminate = selected > 0 && selected < available.length;
+  document.querySelectorAll("#album-tracks input[data-song]").forEach((input) => {
+    if (!input.disabled) input.checked = songs?.has(input.dataset.song) ?? false;
+  });
 }
 
 function jobOutcome(item) {
@@ -331,6 +348,65 @@ function jobCard(job) {
 function jobsView() {
   const cards = state.jobs.map(jobCard).join("");
   return `<h1>Descargas</h1>${cards || '<div class="empty"><strong>Aún no hay descargas</strong>Elige un álbum para empezar.</div>'}`;
+}
+
+function lyricsView() {
+  const { query, results, song, result, busy, error } = state.lyrics;
+  const songs = results?.map((track) => `
+    <div class="lyric-result">
+      ${cover(track, "song-cover")}
+      <div><strong>${esc(track.title)}</strong><br><small>${[track.artist, track.album].filter(Boolean).map(esc).join(" · ")}</small></div>
+      <button data-lyric="${esc(track.id)}" aria-pressed="${song?.id === track.id}">Comprobar letra</button>
+    </div>`).join("");
+  const detail = song ? `
+    <section class="lyric-sheet" aria-labelledby="lyric-title">
+      <h2 id="lyric-title">${esc(song.title)}</h2>
+      <p class="muted">${esc(song.artist)}</p>
+      ${result ? `<p role="status">${esc(result.lyrics_status)}</p>` : ""}
+      ${result?.lyrics ? `<p class="lyric-text">${esc(result.lyrics)}</p>` : ""}
+    </section>` : "";
+  return `<h1>Letras</h1>
+    <form id="lyrics-search" class="search glass" data-lens role="search">
+      <input id="lyric-query" type="search" aria-label="Canción o artista"
+        value="${esc(query)}" placeholder="Canción o artista" required maxlength="500">
+      <button class="primary">Buscar</button>
+    </form>
+    ${busy ? `<p class="search-help" role="status">${song ? "Comprobando letra…" : "Buscando canciones…"}</p>` : ""}
+    ${error ? `<p class="error" role="alert">${esc(error)}</p>` : ""}
+    ${detail}
+    ${songs ? `<div class="track-list">${songs}</div>` : results && !busy && !error ? '<div class="empty">No encontramos canciones.</div>' : ""}
+  `;
+}
+
+async function findLyrics(query, song = null) {
+  const view = state.lyrics;
+  const request = ++view.request;
+  if (!song) {
+    view.query = query;
+    view.results = null;
+  }
+  view.song = song;
+  view.result = null;
+  view.error = "";
+  view.busy = true;
+  render();
+  try {
+    const path = song ? `/lyrics/${encodeURIComponent(song.id)}` : `/lyrics/search?q=${encodeURIComponent(query)}`;
+    const data = await api(path);
+    if (request !== view.request) return;
+    if (song) view.result = data;
+    else view.results = data;
+  } catch (error) {
+    if (request === view.request) view.error = error.message;
+  } finally {
+    if (request === view.request) {
+      view.busy = false;
+      if (state.page === "lyrics") {
+        render();
+        if (song) $("#lyric-title")?.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }
 }
 
 function settingsView() {
@@ -475,6 +551,10 @@ document.addEventListener("submit", (e) => {
   e.preventDefault();
   (async () => {
     if (e.target.id === "search") await search($("#query").value.trim());
+    if (e.target.id === "lyrics-search") {
+      const query = $("#lyric-query").value.trim();
+      if (query) await findLyrics(query);
+    }
     if (e.target.id === "settings") {
       const config = {
         directory: $("#directory").value.trim(),
@@ -492,17 +572,16 @@ function planDownload(album, entry) {
   const available = album.tracks.filter((track) => !track.unavailable);
   const missing = new Map(entry.songs);
   const tracks = available
-    .filter((track) => missing.delete(track.video_id))
-    .map((track) => track.number);
+    .filter((track) => entry.songs.has(track.video_id))
+    .map((track) => {
+      missing.delete(track.video_id);
+      return track.number;
+    });
   return { tracks, missing };
 }
 
 async function downloadBasket() {
   if (state.queueing || !state.basket.size) return;
-  if (basketSize() > maxSongs) {
-    toast(selectionLimitMessage, true);
-    return;
-  }
   state.queueing = true;
   state.error = "";
   render();
@@ -550,23 +629,26 @@ async function downloadBasket() {
 document.addEventListener("change", (e) => {
   const { target } = e;
   const { song, title, releaseId, releaseTitle } = target.dataset;
-  if (!song) return;
-  if (state.queueing) {
-    render();
-    return;
-  }
-  if (target.checked) {
-    const alreadySelected = state.basket.get(releaseId)?.songs.has(song);
-    if (!alreadySelected && basketSize() >= maxSongs) {
-      target.checked = false;
-      toast(selectionLimitMessage, true);
-      return;
+  if (state.queueing || target.disabled) return;
+  if (target.id === "select-album" && state.album) {
+    const { id, title, tracks } = state.album;
+    if (target.checked) {
+      const { songs } = selection(id, title);
+      for (const track of tracks) {
+        if (!track.unavailable) songs.set(track.video_id, track.title);
+      }
+    } else {
+      state.basket.delete(id);
     }
+  } else if (!song) {
+    return;
+  } else if (target.checked) {
     selection(releaseId, releaseTitle).songs.set(song, title);
   } else {
     state.basket.get(releaseId)?.songs.delete(song);
     cleanSelection(releaseId);
   }
+  if (state.album) syncAlbumSelection();
   updateBasketButton();
 });
 document.addEventListener("click", (e) => {
@@ -615,6 +697,11 @@ document.addEventListener("click", (e) => {
       await downloadBasket();
       return;
     }
+    if (b.dataset.lyric) {
+      const song = state.lyrics.results?.find((song) => song.id === b.dataset.lyric);
+      if (song) await findLyrics(state.lyrics.query, song);
+      return;
+    }
     if (b.dataset.control) {
       b.disabled = true;
       try {
@@ -627,14 +714,6 @@ document.addEventListener("click", (e) => {
     }
     if (b.id === "folder" || b.dataset.folder) {
       await api("/folder", { job_id: b.dataset.folder || null });
-      return;
-    }
-    if (b.id === "stop") {
-      await api("/shutdown", {});
-      $("#connection").hidden = false;
-      $("#connection").textContent =
-        "Surco se cerró. Las descargas activas quedan en pausa.";
-      clearInterval(poller);
       return;
     }
   })().catch((e) => {
@@ -652,7 +731,6 @@ document.addEventListener(
   },
   true,
 );
-let poller;
 async function init() {
   try {
     const data = await api("/bootstrap");
@@ -669,7 +747,7 @@ async function init() {
       );
     render();
     await poll();
-    poller = setInterval(() => {
+    setInterval(() => {
       poll();
     }, 1500);
   } catch (e) {

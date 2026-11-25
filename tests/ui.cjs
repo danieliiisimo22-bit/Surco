@@ -14,6 +14,7 @@ function context() {
           textContent: "",
           hidden: false,
           append() {},
+          scrollIntoView() {},
           classList: { toggle() {} },
         });
       return nodes.get(s);
@@ -155,7 +156,7 @@ test("a failed publication stays selected after the other publication queues", a
   assert.match(vm.runInContext("state.error", c), /Second: Offline/);
 });
 
-test("the two-song limit applies across releases and a deselection frees a slot", () => {
+test("more than two tracks can be selected across releases", () => {
   const c = context();
   vm.runInContext("toast = () => {}", c);
   const checkbox = (id, releaseId) => ({
@@ -167,12 +168,79 @@ test("the two-song limit applies across releases and a deselection frees a slot"
   const third = checkbox("song3", "album3");
   const change = (target) => c.listeners.change({ target });
   [first, second, third].forEach(change);
-  assert.equal(third.checked, false);
-  assert.equal(vm.runInContext("basketSize()", c), 2);
+  assert.equal(third.checked, true);
+  assert.equal(vm.runInContext("basketSize()", c), 3);
   first.checked = false;
   change(first);
-  third.checked = true;
-  change(third);
-  assert.equal(third.checked, true);
   assert.equal(vm.runInContext("basketSize()", c), 2);
+});
+
+test("the album checkbox selects all available tracks and queues them together", async () => {
+  const c = context();
+  vm.runInContext(`
+    state.album = {id:'a', title:'Album', tracks:[
+      {number:1, video_id:'one', title:'One'},
+      {number:2, video_id:'two', title:'Two'},
+      {number:3, video_id:'three', title:'Three'},
+      {number:4, video_id:'blocked', title:'Blocked', unavailable:true},
+    ]};
+    toast = () => {};
+    globalThis.requests = [];
+    api = async (path, body) => {
+      if (path === '/albums/a') return state.album;
+      if (path === '/download') requests.push(body);
+      return [];
+    };
+  `, c);
+  const master = vm.runInContext("$('#select-album')", c);
+  Object.assign(master, { id: "select-album", checked: true, dataset: {} });
+  const change = (target) => c.listeners.change({ target });
+  change(master);
+  assert.equal(master.checked, true);
+  assert.equal(master.indeterminate, false);
+  assert.equal(vm.runInContext("basketSize()", c), 3);
+
+  change({ checked: false, dataset: { song: "one", releaseId: "a" } });
+  assert.equal(master.checked, false);
+  assert.equal(master.indeterminate, true);
+  master.checked = true;
+  change(master);
+  master.checked = false;
+  change(master);
+  assert.equal(vm.runInContext("basketSize()", c), 0);
+  assert.equal(master.indeterminate, false);
+
+  master.checked = true;
+  change(master);
+  await vm.runInContext("downloadBasket()", c);
+  assert.equal(c.requests.length, 1);
+  assert.equal(c.requests[0].album_id, "a");
+  assert.deepEqual(Array.from(c.requests[0].tracks), [1, 2, 3]);
+  assert.equal(vm.runInContext("state.page", c), "jobs");
+});
+
+test("lyrics search and checking stay separate from downloads", async () => {
+  const c = context();
+  await vm.runInContext(`(async () => {
+    state.page = 'lyrics';
+    selection('a', 'Album').songs.set('track1', 'Song');
+    const track = { id: 'abcdefghijk', title: '<Canción>', artist: 'Artista' };
+    globalThis.requests = [];
+    api = async (path) => {
+      requests.push(path);
+      return path.startsWith('/lyrics/search')
+        ? [track]
+        : { lyrics: 'Primera línea\\n<Segunda línea>', lyrics_status: 'Disponible' };
+    };
+    await findLyrics('tema & artista');
+    await findLyrics(state.lyrics.query, state.lyrics.results[0]);
+  })()`, c);
+  assert.deepEqual(Array.from(c.requests), [
+    "/lyrics/search?q=tema%20%26%20artista",
+    "/lyrics/abcdefghijk",
+  ]);
+  const html = vm.runInContext("lyricsView()", c);
+  assert.match(html, /&lt;Canción&gt;/);
+  assert.match(html, /Primera línea\n&lt;Segunda línea&gt;/);
+  assert.equal(vm.runInContext("basketSize()", c), 1);
 });

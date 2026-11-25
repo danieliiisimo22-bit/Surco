@@ -383,6 +383,11 @@ small,
   gap: 12px;
   padding: 12px 0;
 }
+.album-selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .track-list {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -535,15 +540,6 @@ select {
 .settings details .field {
   margin: 10px 0 0;
 }
-footer {
-  display: flex;
-  justify-content: end;
-  max-width: calc(var(--frame) - 38px);
-  width: calc(100% - 72px);
-  margin: auto;
-  padding: 10px 0 16px;
-  border-top: 1px solid var(--line);
-}
 #connection {
   max-width: var(--frame);
   margin: 10px auto;
@@ -588,11 +584,8 @@ footer {
     padding-inline: 4px;
     font-size: 0.91rem;
   }
-  main,
-  footer {
-    width: calc(100% - 32px);
-  }
   main {
+    width: calc(100% - 32px);
     min-height: calc(100vh - 190px);
     padding: 28px 0 38px;
   }
@@ -695,14 +688,21 @@ footer {
 .artist-tabs [aria-pressed="true"]:hover {
   background: var(--accent-hover);
 }
-.song-row {
+.song-row,
+.lyric-result {
   display: grid;
-  grid-template-columns: 23px 41px minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   padding: 8px 13px;
 }
-.song-row + .song-row {
+.song-row {
+  grid-template-columns: 23px 41px minmax(0, 1fr) auto;
+}
+.lyric-result {
+  grid-template-columns: 41px minmax(0, 1fr) auto;
+}
+.song-row + .song-row,
+.lyric-result + .lyric-result {
   border-top: 1px solid var(--line);
 }
 .song-cover {
@@ -713,6 +713,30 @@ footer {
   background: var(--raised);
 }
 .song-row strong,
-.song-row small {
+.song-row small,
+.lyric-result div,
+.lyric-text {
   overflow-wrap: anywhere;
+}
+.lyric-sheet {
+  padding: 16px 20px;
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.lyric-sheet h2 {
+  margin-top: 0;
+}
+.lyric-text {
+  white-space: pre-wrap;
+}
+@media (max-width: 440px) {
+  .lyric-result {
+    grid-template-columns: 41px minmax(0, 1fr);
+  }
+  .lyric-result button {
+    grid-column: 2;
+    justify-self: start;
+  }
 }

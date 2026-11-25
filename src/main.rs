@@ -2,6 +2,8 @@
 mod model;
 mod process;
 mod store;
+#[cfg(windows)]
+mod window;
 mod worker;
 use anyhow::{Context, Result};
 use axum::{
@@ -21,7 +23,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 pub struct App {
     root: PathBuf,
@@ -29,6 +31,7 @@ pub struct App {
     port: u16,
     profile: String,
     closing: std::sync::atomic::AtomicBool,
+    shutdown: Notify,
     worker_error: Mutex<Option<String>>,
     token: String,
     config: Mutex<Config>,
@@ -129,6 +132,24 @@ async fn search(State(app): State<Arc<App>>, Query(q): Query<Search>) -> ApiResu
         process::bridge(&app.root, json!({"op":"search","q":q.q.trim()})).await?,
     ))
 }
+async fn lyrics_search(State(app): State<Arc<App>>, Query(q): Query<Search>) -> ApiResult<Value> {
+    ensure_api!(
+        !q.q.trim().is_empty() && q.q.len() <= 500,
+        "Escribe una canción o un artista."
+    );
+    Ok(Json(
+        process::bridge(&app.root, json!({"op":"search_lyrics","q":q.q.trim()})).await?,
+    ))
+}
+async fn lyrics(State(app): State<Arc<App>>, RoutePath(id): RoutePath<String>) -> ApiResult<Value> {
+    ensure_api!(
+        id.len() == 11 && valid_id(&id),
+        "Identificador de canción inválido."
+    );
+    Ok(Json(
+        process::bridge(&app.root, json!({"op":"lyrics","id":id})).await?,
+    ))
+}
 async fn album(State(app): State<Arc<App>>, RoutePath(id): RoutePath<String>) -> ApiResult<Album> {
     ensure_api!(valid_id(&id), "Identificador de álbum inválido.");
     let album: Album =
@@ -154,8 +175,15 @@ async fn jobs(State(app): State<Arc<App>>) -> ApiResult<Vec<Job>> {
     Ok(Json(
         tokio::task::spawn_blocking(move || -> Result<Vec<Job>> {
             let mut jobs = store::jobs(&dir)?;
-            jobs.sort_by_key(|job| !matches!(job.status.as_str(), "running" | "queued" | "paused"));
-            Ok(jobs.into_iter().take(100).map(store::current).collect())
+            let is_active =
+                |job: &Job| matches!(job.status.as_str(), "running" | "queued" | "paused");
+            jobs.sort_by_key(|job| !is_active(job));
+            let active = jobs.iter().take_while(|job| is_active(job)).count();
+            Ok(jobs
+                .into_iter()
+                .take(active.max(100))
+                .map(store::current)
+                .collect())
         })
         .await??,
     ))
@@ -165,15 +193,10 @@ struct Download {
     album_id: String,
     tracks: Vec<usize>,
 }
-const MAX_SONGS: usize = 2;
 async fn download(State(app): State<Arc<App>>, Json(input): Json<Download>) -> ApiResult<Value> {
     let mut indices = input.tracks;
     indices.sort_unstable();
     indices.dedup();
-    ensure_api!(
-        indices.len() <= MAX_SONGS,
-        "Puedes descargar hasta dos canciones por vez."
-    );
     let a = app
         .albums
         .lock()
@@ -370,23 +393,28 @@ async fn report(
         .into_response())
 }
 async fn shutdown(State(app): State<Arc<App>>) -> Json<Value> {
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        app.shutdown.notify_one();
+    });
+    Json(json!({"ok":true}))
+}
+async fn stop(app: &App) -> Result<()> {
     let _write = app.writes.lock().await;
     app.closing
         .store(true, std::sync::atomic::Ordering::Relaxed);
     if let Some((id, tx)) = &*app.active.lock().await {
-        if let Ok(mut j) = store::job(&app.data_dir, id)
-            && j.status == "running"
-        {
-            j.stop("paused");
-            let _ = store::save(&store::job_path(&app.data_dir, id), &j);
-        }
+        let saved = store::job(&app.data_dir, id).and_then(|mut job| {
+            if job.status == "running" {
+                job.stop("paused");
+                store::save(&store::job_path(&app.data_dir, id), &job)?;
+            }
+            Ok(())
+        });
         let _ = tx.send(true);
+        saved?;
     }
-    tokio::spawn(async {
-        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
-        std::process::exit(0)
-    });
-    Json(json!({"ok":true}))
+    Ok(())
 }
 fn router(app: Arc<App>) -> Router {
     Router::new()
@@ -451,6 +479,8 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/health", get(health))
         .route("/api/bootstrap", get(bootstrap))
         .route("/api/search", get(search))
+        .route("/api/lyrics/search", get(lyrics_search))
+        .route("/api/lyrics/{id}", get(lyrics))
         .route("/api/artists/{id}", get(artist))
         .route("/api/albums/{id}", get(album))
         .route("/api/jobs", get(jobs))
@@ -462,33 +492,6 @@ fn router(app: Arc<App>) -> Router {
         .route("/api/shutdown", post(shutdown))
         .layer(middleware::from_fn_with_state(app.clone(), guard))
         .with_state(app)
-}
-fn open_window() {
-    let paths = [
-        std::env::var("ProgramFiles(x86)").unwrap_or_default(),
-        std::env::var("ProgramFiles").unwrap_or_default(),
-    ];
-    for base in paths {
-        let edge = Path::new(&base).join("Microsoft/Edge/Application/msedge.exe");
-        if edge.is_file() {
-            let mut c = std::process::Command::new(edge);
-            c.args([
-                "--app=http://127.0.0.1:8737",
-                "--new-window",
-                "--window-size=1280,900",
-            ]);
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                c.creation_flags(0x08000000);
-            }
-            let _ = c.spawn();
-            return;
-        }
-    }
-    let _ = std::process::Command::new("rundll32.exe")
-        .args(["url.dll,FileProtocolHandler", "http://127.0.0.1:8737"])
-        .spawn();
 }
 const OTHER_PROFILE: &str =
     "Surco ya está abierto en otra sesión de Windows. Ciérralo desde allí para usarlo aquí.";
@@ -515,7 +518,7 @@ fn check_running_instance(response: &[u8], profile: &str) -> Result<()> {
 async fn run() -> Result<()> {
     let start = Instant::now();
     let headless = std::env::args().any(|arg| arg == "--headless");
-    let port = if headless && std::env::args().any(|arg| arg == "--ephemeral-port") {
+    let port = if std::env::args().any(|arg| arg == "--ephemeral-port") {
         0
     } else {
         8737
@@ -544,9 +547,6 @@ async fn run() -> Result<()> {
             )
             .await??;
             check_running_instance(&response, &profile)?;
-            if !headless {
-                open_window();
-            }
             return Ok(());
         }
         Err(e) => return Err(e.into()),
@@ -581,6 +581,7 @@ async fn run() -> Result<()> {
         port: listener.local_addr()?.port(),
         profile,
         closing: false.into(),
+        shutdown: Notify::new(),
         worker_error: Mutex::new(None),
         config: Mutex::new(config),
         token: uuid::Uuid::new_v4().to_string(),
@@ -589,16 +590,30 @@ async fn run() -> Result<()> {
         active: Mutex::new(None),
         started: start,
     });
-    tokio::spawn(worker::dispatch(app.clone()));
     store::save(
         &app.data_dir.join("startup.json"),
         &json!({"ready_ms":start.elapsed().as_millis(),"version":env!("CARGO_PKG_VERSION"),"port":app.port}),
     )?;
-    if !headless {
-        open_window();
-    }
-    axum::serve(listener, router(app)).await?;
-    Ok(())
+    let worker = tokio::spawn(worker::dispatch(app.clone()));
+    let server = async { axum::serve(listener, router(app.clone())).await };
+    let desktop = async {
+        if headless {
+            return std::future::pending().await;
+        }
+        #[cfg(windows)]
+        return window::run(&app.data_dir, app.port).await;
+        #[cfg(not(windows))]
+        anyhow::bail!("La ventana de Surco requiere Windows.")
+    };
+    let result = tokio::select! {
+        result = server => result.map_err(Into::into),
+        result = desktop => result,
+        _ = app.shutdown.notified() => Ok(()),
+    };
+    let stopped = stop(&app).await;
+    worker.await?;
+    result?;
+    stopped
 }
 #[tokio::main]
 async fn main() {
@@ -632,6 +647,7 @@ mod tests {
             port: 8737,
             profile: store::profile_id(root).unwrap(),
             closing: false.into(),
+            shutdown: Notify::new(),
             worker_error: Mutex::new(None),
             token: "test-token".into(),
             config: Mutex::new(Config {
@@ -714,7 +730,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn download_rejects_three_songs_and_accepts_two() {
+    async fn download_enqueues_all_selected_tracks_in_album_order() {
         let d = tempfile::tempdir().unwrap();
         let app = test_app(d.path());
         let album: Album =
@@ -730,15 +746,18 @@ mod tests {
                 json!({"album_id":id,"tracks":tracks}),
             ))
         };
-        let rejected = send(&[1, 2, 3]).await.unwrap();
+        let rejected = send(&[0, 1, 2, 3]).await.unwrap();
         assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
         assert!(store::jobs(d.path()).unwrap().is_empty());
 
-        let accepted = send(&[1, 1, 2]).await.unwrap();
+        let accepted = send(&[3, 1, 1, 2]).await.unwrap();
         assert_eq!(accepted.status(), StatusCode::OK);
         let jobs = store::jobs(d.path()).unwrap();
         assert_eq!(jobs.len(), 1);
-        assert_eq!(jobs[0].items.len(), 2);
+        assert_eq!(jobs[0].status, "queued");
+        let numbers: Vec<_> = jobs[0].items.iter().map(|item| item.track.number).collect();
+        assert_eq!(numbers, [1, 2, 3]);
+        assert!(jobs[0].items.iter().all(|item| item.status == "pending"));
     }
     #[tokio::test]
     async fn unknown_album_cannot_inject_a_source() {
@@ -823,5 +842,54 @@ mod tests {
             .await
             .unwrap_or_else(|_| panic!("resume"));
         assert_eq!(store::job(d.path(), &j.id).unwrap().status, "queued");
+    }
+
+    #[tokio::test]
+    async fn shutdown_pauses_the_active_album_and_keeps_the_queue() {
+        let d = tempfile::tempdir().unwrap();
+        let app = test_app(d.path());
+        let album: Album =
+            serde_json::from_str(include_str!("../tests/fixtures/beatles-manifest.json")).unwrap();
+        app.albums
+            .lock()
+            .await
+            .insert(album.id.clone(), album.clone());
+        for tracks in [vec![1, 2, 3], vec![4]] {
+            let _ = download(
+                State(app.clone()),
+                Json(Download {
+                    album_id: album.id.clone(),
+                    tracks,
+                }),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("enqueue"));
+        }
+        let jobs = store::jobs(d.path()).unwrap();
+        let mut active = jobs
+            .iter()
+            .find(|job| job.items.len() == 3)
+            .unwrap()
+            .clone();
+        active.status = "running".into();
+        active.items[0].status = "saved".into();
+        active.items[1].status = "downloading".into();
+        store::save(&store::job_path(d.path(), &active.id), &active).unwrap();
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        *app.active.lock().await = Some((active.id.clone(), tx));
+
+        stop(&app).await.unwrap();
+
+        assert!(*rx.borrow());
+        let paused = store::job(d.path(), &active.id).unwrap();
+        assert_eq!(paused.status, "paused");
+        assert_eq!(paused.items[0].status, "saved");
+        assert_eq!(paused.items[1].status, "pending");
+        assert!(
+            store::jobs(d.path())
+                .unwrap()
+                .iter()
+                .any(|job| job.status == "queued")
+        );
     }
 }

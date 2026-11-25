@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 FFMPEG = (
@@ -104,6 +104,41 @@ class ArtistTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, r"^No se pudo cargar la ficha del artista") as error:
                 catalog.main({"op": "artist", "id": "UC_test"})
         self.assertNotIn("raw provider data", str(error.exception))
+
+
+class LyricsTests(unittest.TestCase):
+    def test_search_and_check_the_selected_recording(self):
+        api = Mock()
+        song = {
+            "videoId": "abcdefghijk",
+            "title": "Canción",
+            "artists": [{"name": "Artista"}],
+            "album": {"name": "Álbum"},
+        }
+        api.search.return_value = [song, song, {"title": "Sin identificador"}]
+        api.get_watch_playlist.return_value = {"tracks": [song], "lyrics": "lyric-id"}
+        api.get_lyrics.return_value = {"lyrics": "Primera línea\nSegunda línea"}
+        with patch.object(catalog, "client", return_value=api):
+            results = catalog.main({"op": "search_lyrics", "q": "Canción Artista"})
+            self.assertEqual([result["id"] for result in results], ["abcdefghijk"])
+            self.assertEqual(results[0]["album"], "Álbum")
+            api.search.assert_called_once_with("Canción Artista", filter="songs", limit=20)
+            result = catalog.main({"op": "lyrics", "id": results[0]["id"]})
+            self.assertEqual(result["lyrics_status"], "Disponible")
+            self.assertEqual(result["lyrics"], "Primera línea\nSegunda línea")
+            api.get_watch_playlist.assert_called_once_with(videoId="abcdefghijk", limit=1)
+            api.get_lyrics.assert_called_once_with("lyric-id")
+
+    def test_missing_lyrics_and_a_failed_lookup_have_distinct_statuses(self):
+        api = Mock()
+        api.get_lyrics.side_effect = RuntimeError("offline")
+        self.assertEqual(
+            catalog.track_lyrics(api, {})["lyrics_status"], "No disponible en la fuente"
+        )
+        self.assertEqual(
+            catalog.track_lyrics(api, {"lyrics": "lyric-id"})["lyrics_status"],
+            "No se pudo consultar la letra",
+        )
 
 
 class AlbumTests(unittest.TestCase):
